@@ -1,0 +1,250 @@
+# ============================================================
+# Enterprise Agentic RAG — Local Development Infrastructure
+# ============================================================
+# Start:  docker compose up -d
+# Stop:   docker compose down
+# Reset:  docker compose down -v && docker compose up -d
+# Health: ./scripts/healthcheck.sh
+# ============================================================
+
+services:
+
+  # ==================================================================
+  # PostgreSQL — user profiles, sessions, audit logs, eval data
+  # ==================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: earg-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-enterprise_rag}
+      POSTGRES_USER: ${POSTGRES_USER:-rag_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rag_password_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./data/db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rag_user} -d ${POSTGRES_DB:-enterprise_rag}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ==================================================================
+  # Redis — session cache, tool state, pending confirmations, rate limit
+  # ==================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: earg-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: >
+      redis-server
+      --save 60 1
+      --loglevel warning
+      ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  # ==================================================================
+  # Milvus standalone — vector search for enterprise knowledge base
+  # ==================================================================
+  milvus:
+    image: milvusdb/milvus:v2.4.0
+    container_name: earg-milvus
+    command: ["milvus", "run", "standalone"]
+    ports:
+      - "${MILVUS_PORT:-19530}:19530"
+      - "9091:9091"
+    environment:
+      ETCD_USE_EMBED: "true"
+      COMMON_STORAGETYPE: local
+    volumes:
+      - milvusdata:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 40s
+    restart: unless-stopped
+
+  # ==================================================================
+  # MinIO — S3-compatible object storage for documents
+  # ==================================================================
+  minio:
+    image: minio/minio:latest
+    container_name: earg-minio
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin_dev}
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  # ==================================================================
+  # MinIO bucket auto-creation helper
+  # ==================================================================
+  minio-create-bucket:
+    image: minio/mc:latest
+    container_name: earg-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until (/usr/bin/mc alias set local http://minio:9000 ${MINIO_ACCESS_KEY:-minioadmin} ${MINIO_SECRET_KEY:-minioadmin_dev}) do echo 'waiting for minio...'; sleep 2; done;
+      /usr/bin/mc mb local/${MINIO_BUCKET:-enterprise-rag-docs} --ignore-existing;
+      echo 'MinIO bucket ready';
+      exit 0
+      "
+
+  # ==================================================================
+  # Elasticsearch 8 — full-text keyword search with IK Analyzer
+  # ==================================================================
+  elasticsearch:
+    build:
+      context: ./docker
+      dockerfile: Dockerfile.es
+    container_name: earg-es
+    ports:
+      - "${ES_PORT:-9200}:9200"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+
+  # ==================================================================
+  # OpenTelemetry Collector — trace/metric/log pipeline
+  # ==================================================================
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: earg-otel
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus metrics (collector internal)
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ==================================================================
+  # Prometheus — metrics scraping and storage
+  # ==================================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: earg-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  # ==================================================================
+  # Neo4j 5.x — Graph database for Graph-Augmented RAG
+  # ==================================================================
+  neo4j:
+    image: neo4j:5
+    container_name: earg-neo4j
+    ports:
+      - "7474:7474"   # HTTP
+      - "7687:7687"   # Bolt
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=512m
+      - NEO4J_dbms_memory_pagecache_size=256m
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'RETURN 1' | cypher-shell -u ${NEO4J_USER:-neo4j} -p ${NEO4J_PASSWORD:-password} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+
+  # ==================================================================
+  # Grafana — metrics dashboards
+  # ==================================================================
+  grafana:
+    image: grafana/grafana:11.5
+    container_name: earg-grafana
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin_dev}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafanadata:/var/lib/grafana
+      - ./config/grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+# ==================================================================
+# Named volumes
+# ==================================================================
+volumes:
+  pgdata:
+  redisdata:
+  milvusdata:
+  miniodata:
+  esdata:
+  promdata:
+  grafanadata:
+  neo4j_data:
+  neo4j_logs:

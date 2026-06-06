@@ -1,0 +1,73 @@
+# ============================================================
+# Prompt Eval Gate — Validate Prompt Changes Before Merge
+# ============================================================
+# Runs whenever prompt templates, intent keywords, or routing
+# logic is modified.  Prevents prompt regression.
+# ============================================================
+
+pipeline:
+  name: enterprise-rag-prompt-eval-gate
+  trigger:
+    on:
+      - pull_request:
+          paths:
+            - "src/enterprise_agentic_rag/llm/**"
+            - "src/enterprise_agentic_rag/agents/**"
+            - "src/enterprise_agentic_rag/context/prompt_builder.py"
+            - "data/eval/regression_cases.jsonl"
+      - manual: "prompt-eval"
+
+  stages:
+    # ================================================================
+    # Stage 1 — Run Prompt Eval
+    # ================================================================
+    - name: run_prompt_eval
+      description: "Execute prompt evaluation against all test cases"
+      inputs: {}
+      outputs:
+        - prompt_eval_report: "prompt_eval.json"
+      commands:
+        - .venv/bin/python -m enterprise_agentic_rag.prompt_ops.prompt_eval_runner --all --output prompt_eval.json
+      failure_conditions:
+        - "eval runner crashed"
+
+    # ================================================================
+    # Stage 2 — Prompt Quality Gates
+    # ================================================================
+    - name: check_prompt_quality
+      depends_on: [run_prompt_eval]
+      inputs:
+        - prompt_eval_report: "prompt_eval.json"
+      thresholds:
+        intent_accuracy:          { min: 0.90, description: "Intent classification accuracy" }
+        route_accuracy:           { min: 0.90, description: "Routing decision accuracy" }
+        citation_present_rate:    { min: 0.95, description: "Citation in generated answers" }
+        false_pass_rate:          { max: 0.05, description: "False verification pass rate (lower is better)" }
+        overall_pass_rate:        { min: 0.90, description: "Overall eval case pass rate" }
+      actions_on_failure:
+        - "BLOCK PR merge"
+        - "comment on PR with failing metrics"
+        - "tag prompt-engineer"
+
+    # ================================================================
+    # Stage 3 — Compare with Baseline
+    # ================================================================
+    - name: compare_with_baseline
+      description: "Compare new prompt version against current baseline"
+      depends_on: [run_prompt_eval]
+      inputs:
+        - prompt_eval_report: "prompt_eval.json"
+        - baseline_report: "baseline_prompt_eval.json"
+      thresholds:
+        regression_max: 0.03  # Metrics cannot degrade more than 3%
+      logic: |
+        for each metric in [intent_accuracy, route_accuracy, overall_pass_rate]:
+          if new_version[metric] < baseline[metric] - regression_max:
+            FAIL("Prompt regression detected in {metric}")
+      actions_on_failure:
+        - "BLOCK PR merge"
+        - "require explicit override from prompt-engineer-lead"
+
+  notifications:
+    on_failure:
+      - slack: "#prompt-engineering"

@@ -1,0 +1,11 @@
+
+{"query": "如何重置密码？", "expected_intent": "technical_question", "expected_sources": ["sample_faq.md"], "expected_answer_keywords": ["密码", "重置", "忘记"], "user_role": "admin", "difficulty": "easy"}
+{"query": "API 认证方式有哪些？", "expected_intent": "technical_question", "expected_sources": ["sample_api_doc.md"], "expected_answer_keywords": ["认证", "API", "Key", "OAuth"], "user_role": "developer", "difficulty": "easy"}
+{"query": "数据分类标准是什么？有什么合规要求？", "expected_intent": "policy_question", "expected_sources": ["sample_policy.md"], "expected_answer_keywords": ["数据分类", "机密", "合规"], "user_role": "admin", "difficulty": "medium"}
+{"query": "我接入 SDK 时遇到 AUTH_401 错误怎么办？", "expected_intent": "troubleshooting", "expected_sources": ["sample_api_doc.md"], "expected_answer_keywords": ["AUTH", "401", "认证", "错误"], "user_role": "developer", "difficulty": "medium"}
+{"query": "查询工单 TKT-001 的状态", "expected_intent": "ticket_query", "expected_sources": [], "expected_answer_keywords": ["TKT-001", "工单"], "user_role": "admin", "difficulty": "medium"}
+{"query": "系统的访问控制策略是什么？", "expected_intent": "policy_question", "expected_sources": ["sample_policy.md"], "expected_answer_keywords": ["访问", "权限", "最小"], "user_role": "admin", "difficulty": "easy"}
+{"query": "工单 TKT-003 处理到哪一步了？", "expected_intent": "ticket_query", "expected_sources": [], "expected_answer_keywords": ["TKT-003", "工单"], "user_role": "admin", "difficulty": "medium"}
+{"query": "如何配置 API 网关的速率限制？", "expected_intent": "technical_question", "expected_sources": ["sample_api_doc.md"], "expected_answer_keywords": ["速率", "API", "限制"], "user_role": "developer", "difficulty": "hard"}
+{"query": "机密数据在传输时有什么要求？", "expected_intent": "policy_question", "expected_sources": ["sample_policy.md"], "expected_answer_keywords": ["机密", "数据", "传输", "加密"], "user_role": "admin", "difficulty": "hard"}
+{"query": "系统出现 AUTH_401 错误，所有服务都返回 500，排查步骤是什么？", "expected_intent": "troubleshooting", "expected_sources": ["sample_api_doc.md"], "expected_answer_keywords": ["AUTH_401", "排查", "500"], "user_role": "developer", "difficulty": "hard"}

@@ -1,0 +1,67 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "enterprise-agentic-rag"
+version = "0.1.0"
+description = "Enterprise Agentic RAG Multi-Agent QA System"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2.40",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "httpx>=0.27.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30.0",
+    "alembic>=1.14",
+    "redis>=5.0",
+    "elasticsearch>=8.0.0,<9.0.0",
+    "neo4j>=5.0.0,<6.0.0",
+    "prometheus-client>=0.20.0",
+    "minio>=7.2.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.6.0",
+]
+eval = [
+    "ragas>=0.2.0",
+    "datasets>=2.20.0",
+    "pandas>=2.2.0",
+]
+code-analysis = [
+    "tree-sitter>=0.21.0",
+    "tree-sitter-typescript>=0.21.0",
+]
+code-execution = [
+    "resource>=0.2.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/enterprise_agentic_rag"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "integration: tests that may require external services",
+    "timeout: per-test timeout marker used when pytest-timeout is installed",
+]

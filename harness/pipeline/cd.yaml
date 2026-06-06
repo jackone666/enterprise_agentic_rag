@@ -1,0 +1,158 @@
+# ============================================================
+# CD Pipeline — Continuous Delivery with Canary
+# ============================================================
+# Promotes from dev → staging → production with gated checkpoints.
+# ============================================================
+
+pipeline:
+  name: enterprise-rag-cd
+  trigger:
+    on:
+      - manual: "deploy"
+      - pipeline_success: [enterprise-rag-ci, enterprise-rag-eval-gate]
+
+  stages:
+    # ================================================================
+    # Stage 1 — Deploy to Dev
+    # ================================================================
+    - name: deploy_to_dev
+      description: "Deploy latest build to dev environment"
+      environment: dev
+      commands:
+        - docker compose -f docker-compose.yml up -d
+        - .venv/bin/python scripts/init_db.py
+        - .venv/bin/python scripts/ingest_docs.py
+        - .venv/bin/python -m uvicorn enterprise_agentic_rag.app.main:app --port 8000 &
+      rollback:
+        - docker compose down
+        - git checkout previous_commit
+      success_condition: "all services healthy"
+
+    # ================================================================
+    # Stage 2 — Smoke Test Dev
+    # ================================================================
+    - name: smoke_test_dev
+      description: "Quick verification that critical paths work"
+      depends_on: [deploy_to_dev]
+      commands:
+        - curl -sf http://localhost:8000/health
+        - curl -sf -X POST http://localhost:8000/chat -H 'Content-Type: application/json' -d '{"query":"test","user_id":"u001","session_id":"smoke"}'
+        - curl -sf http://localhost:8000/metrics
+      failure_conditions:
+        - "/health != 200"
+        - "/chat != 200"
+        - "/metrics != 200"
+
+    # ================================================================
+    # Stage 3 — Eval Gate (Gate Checkpoint)
+    # ================================================================
+    - name: run_eval_gate
+      description: "Gate checkpoint — must pass before staging"
+      depends_on: [smoke_test_dev]
+      type: gate
+      gate_pipeline: enterprise-rag-eval-gate
+      on_pass: "proceed to deploy_to_staging"
+      on_fail: "BLOCK — rollback dev"
+
+    # ================================================================
+    # Stage 4 — Deploy to Staging
+    # ================================================================
+    - name: deploy_to_staging
+      description: "Deploy to staging with full Docker infra + eval gate"
+      depends_on: [run_eval_gate]
+      environment: staging
+      commands:
+        - export STAGING=true
+        - docker compose -f docker-compose.yml up -d
+        - .venv/bin/python scripts/init_db.py
+        - .venv/bin/python scripts/ingest_docs.py
+        - .venv/bin/python -m uvicorn enterprise_agentic_rag.app.main:app --port 8000 &
+      feature_flags:
+        enable_real_llm: true
+        enable_tool_calling: true
+        enable_sensitive_tools: false  # staging 不开敏感工具
+        enable_eval_gate: true
+
+    # ================================================================
+    # Stage 5 — Canary Release
+    # ================================================================
+    - name: canary_release
+      description: "Gradual traffic shift with automated monitoring"
+      depends_on: [deploy_to_staging]
+      strategy:
+        - step: 1
+          traffic_percent: 5
+          duration_minutes: 30
+          metrics:
+            - fallback_rate
+            - error_rate
+            - p95_latency_ms
+        - step: 2
+          traffic_percent: 20
+          duration_minutes: 60
+          metrics:
+            - fallback_rate
+            - error_rate
+            - p95_latency_ms
+        - step: 3
+          traffic_percent: 50
+          duration_minutes: 120
+          metrics:
+            - fallback_rate
+            - error_rate
+            - p95_latency_ms
+            - thumbs_down_rate
+        - step: 4
+          traffic_percent: 100
+          duration_minutes: 0
+          condition: "all previous steps passed"
+
+    # ================================================================
+    # Stage 6 — Monitor Canary
+    # ================================================================
+    - name: monitor_canary
+      description: "Automated canary health monitoring"
+      depends_on: [canary_release]
+      duration_minutes: 60
+      metrics:
+        fallback_rate:            { max_increase: 0.05, description: "Max 5% increase vs baseline" }
+        human_fallback_rate:      { max_increase: 0.03 }
+        verification_pass_rate:   { max_decrease: 0.05 }
+        tool_success_rate:        { max_decrease: 0.05 }
+        thumbs_down_rate:         { max_increase: 0.03 }
+        p95_latency_ms:           { max_increase_pct: 50 }
+        error_rate:               { max: 0.01 }
+      on_metric_violation:
+        - "AUTO_ROLLBACK to previous version"
+        - "notify #incident-response"
+
+    # ================================================================
+    # Stage 7 — Promote to Production
+    # ================================================================
+    - name: promote_to_production
+      description: "Final promotion after canary succeeds"
+      depends_on: [monitor_canary]
+      environment: production
+      requires_approval: true
+      approvers: ["release-manager"]
+      commands:
+        - export PRODUCTION=true
+        - docker compose -f docker-compose.yml up -d
+        - .venv/bin/python -m uvicorn enterprise_agentic_rag.app.main:app --port 8000 &
+      post_deploy:
+        - "verify /health"
+        - "verify /metrics"
+        - "verify eval_gate"
+        - "notify #deployments: production deployed ${BUILD_ID}"
+
+  # ================================================================
+  # Rollback Plan (always attached)
+  # ================================================================
+  rollback_plan:
+    trigger: manual_or_auto
+    commands:
+      - "docker compose down"
+      - "git checkout ${PREVIOUS_STABLE_TAG}"
+      - "docker compose up -d"
+      - .venv/bin/python scripts/init_db.py
+    rollback_time_sla_minutes: 10

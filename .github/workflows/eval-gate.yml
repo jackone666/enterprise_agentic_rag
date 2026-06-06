@@ -1,0 +1,98 @@
+name: Eval Gate CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  eval-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: enterprise_rag_test
+          POSTGRES_USER: rag_user
+          POSTGRES_PASSWORD: test_pass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v2
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: |
+          uv pip install --system -e ".[dev,eval]"
+
+      - name: Check available services
+        run: |
+          python -c "
+          import os
+          os.environ['POSTGRES_HOST'] = 'localhost'
+          os.environ['POSTGRES_DB'] = 'enterprise_rag_test'
+          os.environ['POSTGRES_USER'] = 'rag_user'
+          os.environ['POSTGRES_PASSWORD'] = 'test_pass'
+          os.environ['REDIS_HOST'] = 'localhost'
+          from enterprise_agentic_rag.config.settings import get_settings
+          s = get_settings()
+          print('Services:', s.check_services())
+          "
+
+      - name: Run eval gate
+        run: |
+          python scripts/run_eval_gate.py --threshold 0.7 --output eval_results.json
+
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: eval_results.json
+
+      - name: Check eval gate
+        run: |
+          python -c "
+          import json, sys
+          with open('eval_results.json') as f:
+              results = json.load(f)
+          passed = results.get('gate_passed', False)
+          summary = results.get('summary', {})
+          print(f'Gate passed: {passed}')
+          print(f'Overall score: {summary.get(\"overall\", \"N/A\")}')
+          print(f'Faithfulness: {summary.get(\"faithfulness\", \"N/A\")}')
+          print(f'Context recall: {summary.get(\"context_recall\", \"N/A\")}')
+          if not passed:
+              print('Eval gate FAILED — see eval_results.json for details')
+              sys.exit(1)
+          print('Eval gate PASSED')
+          "

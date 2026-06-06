@@ -1,0 +1,62 @@
+# ── Secrets & local config (NEVER commit) ──
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.secret
+secrets/
+
+# ── Python venv & caches ──
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ── Node / frontend ──
+node_modules/
+.npm/
+.yarn/
+.pnpm-store/
+dist/
+build/
+.next/
+.cache/
+
+# ── IDE & editor ──
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ── Project-specific runtime data ──
+# Local Milvus / MinIO / Neo4j volumes
+data/local/
+logs/
+*.log
+backend_logs/
+
+# ── Knowledge-base ingestion caches ──
+.cache/
+.eslintcache
+.parcel-cache/
+.uv-cache/
+.pyright-cache/
+
+# ── Test artifacts ──
+.coverage
+.coverage.*
+coverage.xml
+test-results/
+playwright-report/

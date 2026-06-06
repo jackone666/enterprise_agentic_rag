@@ -1,0 +1,142 @@
+# ============================================================
+# CI Pipeline — Enterprise Agentic RAG
+# ============================================================
+# Harness-like CI template. Each stage defines inputs,
+# outputs, commands, and failure conditions.
+# ============================================================
+
+pipeline:
+  name: enterprise-rag-ci
+  trigger:
+    on:
+      - push: [main, develop, "feature/*"]
+      - pull_request: [main]
+
+  stages:
+    # ================================================================
+    # Stage 0 — Checkout
+    # ================================================================
+    - name: checkout
+      description: "Clone repository at commit SHA"
+      outputs:
+        - commit_sha: "${GIT_COMMIT}"
+        - branch: "${GIT_BRANCH}"
+        - author: "${GIT_AUTHOR}"
+      commands:
+        - git checkout ${GIT_COMMIT}
+
+    # ================================================================
+    # Stage 1 — Install Dependencies
+    # ================================================================
+    - name: install_dependencies
+      description: "Install Python + Node.js dependencies"
+      inputs: {}
+      outputs:
+        - venv_ready: true
+        - node_modules_ready: true
+      commands:
+        - .venv/bin/pip install -e ".[dev]"
+        - cd frontend && npm ci
+      failure_conditions:
+        - "pip install return code != 0"
+        - "npm ci return code != 0"
+
+    # ================================================================
+    # Stage 2 — Backend Unit Tests
+    # ================================================================
+    - name: backend_unit_tests
+      description: "Run pytest on all test files"
+      depends_on: [install_dependencies]
+      inputs:
+        - venv_ready: true
+      outputs:
+        - test_report: "junit.xml"
+        - coverage_report: "coverage.xml"
+      commands:
+        - .venv/bin/python -m pytest tests/ -v --tb=short --junitxml=junit.xml --cov=src --cov-report=xml
+      thresholds:
+        - min_pass_rate: 1.0      # 100% tests must pass
+        - min_coverage: 0.75      # 75% line coverage
+      failure_conditions:
+        - "any test FAILED"
+        - "coverage < 75%"
+
+    # ================================================================
+    # Stage 3 — Frontend Build
+    # ================================================================
+    - name: frontend_build
+      description: "TypeScript compile + Vite production build"
+      depends_on: [install_dependencies]
+      inputs:
+        - node_modules_ready: true
+      outputs:
+        - dist_ready: true
+        - build_size_kb: 250
+      commands:
+        - cd frontend && npm run build
+      thresholds:
+        - max_bundle_size_kb: 300
+      failure_conditions:
+        - "tsc compile error"
+        - "vite build error"
+        - "bundle size > 300KB"
+
+    # ================================================================
+    # Stage 4 — Lint & Type Check
+    # ================================================================
+    - name: lint_and_type_check
+      description: "Ruff lint + mypy type check"
+      depends_on: [install_dependencies]
+      inputs:
+        - venv_ready: true
+      outputs:
+        - lint_report: "lint.txt"
+      commands:
+        - .venv/bin/python -m ruff check src/
+        - cd frontend && npx tsc --noEmit
+      failure_conditions:
+        - "ruff found errors"
+        - "tsc type errors"
+
+    # ================================================================
+    # Stage 5 — Docker Build
+    # ================================================================
+    - name: docker_build
+      description: "Build and tag Docker images"
+      depends_on: [backend_unit_tests, frontend_build, lint_and_type_check]
+      inputs:
+        - test_report: "junit.xml"
+        - dist_ready: true
+      outputs:
+        - image_tag: "enterprise-rag:${BUILD_ID}"
+      commands:
+        - docker compose build
+        - docker tag enterprise-rag:latest enterprise-rag:${BUILD_ID}
+      failure_conditions:
+        - "docker build error"
+
+    # ================================================================
+    # Stage 6 — Artifact Publish
+    # ================================================================
+    - name: artifact_publish
+      description: "Push images + save test/eval reports"
+      depends_on: [docker_build]
+      inputs:
+        - image_tag: "enterprise-rag:${BUILD_ID}"
+      outputs:
+        - artifact_url: "registry.company.com/enterprise-rag:${BUILD_ID}"
+      commands:
+        - docker push enterprise-rag:${BUILD_ID}
+        - "echo 'Saving reports...' && cp junit.xml artifacts/ && cp coverage.xml artifacts/"
+      failure_conditions:
+        - "docker push failed"
+
+  # ================================================================
+  # Post-pipeline notifications
+  # ================================================================
+  notifications:
+    on_success:
+      - slack: "#ci-success"
+    on_failure:
+      - slack: "#ci-alerts"
+      - email: "platform-team@company.com"

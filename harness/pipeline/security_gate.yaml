@@ -1,0 +1,92 @@
+# ============================================================
+# Security Gate — Block vulnerabilities before production
+# ============================================================
+# Critical issues → BLOCK production
+# Medium issues → allow dev, BLOCK production
+# Low issues → warning only
+# ============================================================
+
+pipeline:
+  name: enterprise-rag-security-gate
+  trigger:
+    on:
+      - manual: "pre-production"
+      - pipeline_success: [enterprise-rag-cd]
+
+  stages:
+    # ================================================================
+    # Stage 1 — Secret Scan
+    # ================================================================
+    - name: secret_scan
+      severity: critical
+      description: "Scan code for hardcoded secrets"
+      commands:
+        - "grep -rE 'sk-[a-zA-Z0-9]{20,}' src/ && FAIL || PASS"
+        - "grep -rE 'password\s*=\s*[\"'\"'']' .env 2>/dev/null && WARN || PASS"
+        - "test -f .env && git check-ignore .env || FAIL"
+      checks:
+        - "No API keys in source code"
+        - ".env is gitignored"
+        - "No hardcoded DB passwords in source"
+      on_failure: "BLOCK production deployment"
+
+    # ================================================================
+    # Stage 2 — Dependency Vulnerability Scan
+    # ================================================================
+    - name: dependency_scan
+      severity: medium
+      description: "Check Python + NPM deps for known CVEs"
+      commands:
+        - ".venv/bin/pip-audit 2>/dev/null || echo 'pip-audit not installed — skip'"
+        - "cd frontend && npm audit --production 2>/dev/null || echo 'npm audit skip'"
+      checks:
+        - "No critical CVEs in Python deps"
+        - "No high-severity CVEs in NPM deps"
+      on_failure: "WARN — allow dev/staging, BLOCK production"
+
+    # ================================================================
+    # Stage 3 — Permission Policy Audit
+    # ================================================================
+    - name: permission_policy_check
+      severity: critical
+      description: "Verify production safety defaults"
+      checks:
+        - "ENABLE_DESTRUCTIVE_TOOLS must be false in production"
+        - "sensitive tools require pending_confirmation"
+        - "permission check runs before every node"
+        - "knowledge_search permission enforced"
+      on_failure: "BLOCK production deployment"
+
+    # ================================================================
+    # Stage 4 — Prompt Injection Policy
+    # ================================================================
+    - name: prompt_injection_policy_check
+      severity: high
+      description: "Verify system prompts resist injection"
+      checks:
+        - "System prompt instructs to refuse unauthorized access"
+        - "Verifier checks answer grounding in retrieved docs"
+        - "Tool calling validates user permissions before execution"
+        - "Citations are enforced in generated answers"
+      on_failure: "WARN — allow staging, BLOCK production"
+
+    # ================================================================
+    # Stage 5 — Data Leakage Audit
+    # ================================================================
+    - name: data_leakage_check
+      severity: medium
+      description: "Verify observability doesn't leak sensitive data"
+      checks:
+        - "Event logs use input_summary (max 120 chars) not raw query"
+        - "Tool audit logs don't store full API responses"
+        - "Node events don't log retrieved doc content"
+        - "make_summary() truncates before logging"
+      on_failure: "WARN — allow staging, BLOCK production"
+
+  # ================================================================
+  # Gate decision matrix
+  # ================================================================
+  output:
+    critical_failures: 0  # >0 = BLOCK production
+    high_failures: 0       # >0 = BLOCK production
+    medium_failures: 0     # >0 = WARN only

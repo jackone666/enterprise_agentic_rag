@@ -1,0 +1,105 @@
+# ============================================================
+# Eval Gate — Quality Gates Before Production Promotion
+# ============================================================
+# Blocks deployment if ANY quality metric falls below threshold.
+# Must pass ALL gates before proceeding to staging/production.
+# ============================================================
+
+pipeline:
+  name: enterprise-rag-eval-gate
+  trigger:
+    on:
+      - manual: "pre-deploy"
+      - pipeline_success: [enterprise-rag-ci]
+
+  stages:
+    # ================================================================
+    # Stage 1 — Regression Eval
+    # ================================================================
+    - name: run_regression_eval
+      description: "Run full regression test suite against eval dataset"
+      inputs: {}
+      outputs:
+        - eval_report: "eval_report.json"
+      commands:
+        - .venv/bin/python -m enterprise_agentic_rag.evals.regression_eval > eval_report.json
+      failure_conditions:
+        - "regression eval crashed"
+        - "eval_report.json missing or empty"
+
+    # ================================================================
+    # Stage 2 — RAG Metrics Gate
+    # ================================================================
+    - name: check_rag_metrics
+      description: "Verify retrieval quality meets production bar"
+      depends_on: [run_regression_eval]
+      inputs:
+        - eval_report: "eval_report.json"
+      thresholds:
+        hit_at_k:                  { min: 0.80, description: "Top-K recall hit rate" }
+        recall_at_k:               { min: 0.75, description: "Expected source recall" }
+        avg_retrieval_score:       { min: 0.60, description: "Mean retrieval relevance score" }
+      actions_on_failure:
+        - "BLOCK deployment"
+        - "notify #rag-alerts"
+        - "create JIRA ticket: RAG Regression Failure"
+
+    # ================================================================
+    # Stage 3 — Answer Quality Gate
+    # ================================================================
+    - name: check_answer_metrics
+      description: "Verify generation quality meets production bar"
+      depends_on: [run_regression_eval]
+      inputs:
+        - eval_report: "eval_report.json"
+      thresholds:
+        citation_present_rate:     { min: 0.95, description: "Answers with source citations" }
+        groundedness_rate:         { min: 0.85, description: "Answers grounded in retrieved docs" }
+        refusal_correctness_rate:  { min: 0.90, description: "Proper refusal when no docs available" }
+      actions_on_failure:
+        - "BLOCK deployment"
+        - "notify #rag-alerts"
+        - "tag prompt-engineer for review"
+
+    # ================================================================
+    # Stage 4 — Agent Health Gate
+    # ================================================================
+    - name: check_agent_metrics
+      description: "Verify agent pipeline health metrics"
+      depends_on: [run_regression_eval]
+      inputs:
+        - eval_report: "eval_report.json"
+      thresholds:
+        verification_pass_rate:    { min: 0.85, description: "Answer verification pass rate" }
+        fallback_rate:             { max: 0.25, description: "Fallback trigger rate (lower is better)" }
+        tool_success_rate:         { min: 0.90, description: "Tool execution success rate" }
+      actions_on_failure:
+        - "BLOCK deployment"
+        - "notify #agent-alerts"
+        - "check tool adapter health"
+
+    # ================================================================
+    # Stage 5 — Final Gate
+    # ================================================================
+    - name: fail_pipeline_if_eval_failed
+      description: "Aggregate all gate results — any failure blocks deployment"
+      depends_on: [check_rag_metrics, check_answer_metrics, check_agent_metrics]
+      logic: "ALL_MUST_PASS"
+      actions_on_failure:
+        - "BLOCK promotion to staging/production"
+        - "generate eval-gate-failure-report"
+        - "notify release-manager"
+
+  # ================================================================
+  # Gate Results Output
+  # ================================================================
+  outputs:
+    - format: json
+      path: "eval_gate_result.json"
+      schema:
+        rag_metrics_passed: boolean
+        answer_metrics_passed: boolean
+        agent_metrics_passed: boolean
+        overall_passed: boolean
+        failed_thresholds: [string]
+        timestamp: string

@@ -1,0 +1,8 @@
+{
+  "enabledMcpjsonServers": [
+    "puppeteer",
+    "github",
+    "sequential-thinking",
+    "filesystem"
+  ]
+}

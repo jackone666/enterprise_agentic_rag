@@ -1,0 +1,181 @@
+# ============================================================
+# Rollback Pipeline — Multi-Dimensional Agent Rollback
+# ============================================================
+# Agent system rollback is NOT just code revert.
+# Supports independent rollback of 7 capability dimensions.
+# ============================================================
+
+pipeline:
+  name: enterprise-rag-rollback
+  trigger:
+    on:
+      - manual: "rollback"
+      - auto: "metric_violation"
+      - auto: "eval_gate_failure"
+
+  # ================================================================
+  # Dimension 1 — Code Rollback
+  # ================================================================
+  - name: code_rollback
+    description: "Revert to previous git commit/tag"
+    when:
+      - "new code introduces bugs"
+      - "dependency upgrade breaks pipeline"
+    commands:
+      - git checkout ${PREVIOUS_STABLE_TAG}
+      - docker compose down && docker compose up -d
+      - .venv/bin/python scripts/init_db.py
+    verify:
+      - pytest tests/ --tb=short
+      - curl -sf http://localhost:8000/health
+    rollback_time_estimate: 5 minutes
+
+  # ================================================================
+  # Dimension 2 — Prompt Rollback
+  # ================================================================
+  - name: prompt_rollback
+    description: "Restore previous prompt version without code change"
+    when:
+      - "new prompt degrades answer quality"
+      - "prompt_eval_gate fails"
+      - "citation_present_rate drops"
+    commands:
+      - cp prompts/backups/v${PREVIOUS_VERSION}/* src/enterprise_agentic_rag/llm/
+      - # or via feature flag:
+      - export PROMPT_VERSION=${PREVIOUS_VERSION}
+      - .venv/bin/python -m enterprise_agentic_rag.prompt_ops.prompt_eval_runner --quick
+    verify:
+      - "prompt_eval overall_pass_rate >= 0.90"
+    rollback_time_estimate: 2 minutes
+
+  # ================================================================
+  # Dimension 3 — Workflow Rollback
+  # ================================================================
+  - name: workflow_rollback
+    description: "Toggle LangGraph workflow version via feature flag"
+    when:
+      - "new workflow introduces routing errors"
+      - "node sequencing is broken"
+    commands:
+      - export ENABLE_LANGGRAPH_V2_WORKFLOW=false
+      - # system falls back to v1 workflow automatically
+    verify:
+      - "route_accuracy >= 0.90"
+      - "fallback_rate <= 0.25"
+    rollback_time_estimate: 1 minute (feature flag instant)
+
+  # ================================================================
+  # Dimension 4 — Retriever Rollback
+  # ================================================================
+  - name: retriever_rollback
+    description: "Switch retriever backend or fall back to keyword"
+    when:
+      - "Qdrant/Milvus returns degraded results"
+      - "vector search latency spikes"
+      - "hit@k drops below 0.80"
+    commands:
+      - # Option A: Switch to keyword-only
+      - export RETRIEVER_MODE=keyword
+      - # Option B: Use previous collection
+      - export QDRANT_COLLECTION_NAME=enterprise_kb_v1
+    verify:
+      - "hit@k >= 0.80"
+      - "p95_latency_ms <= 500"
+    rollback_time_estimate: 1 minute
+
+  # ================================================================
+  # Dimension 5 — LLM Rollback
+  # ================================================================
+  - name: llm_rollback
+    description: "Switch LLM provider or model version"
+    when:
+      - "new model produces lower quality"
+      - "API latency spikes"
+      - "cost exceeds budget"
+    commands:
+      - # Option A: Switch model
+      - export LLM_MODEL=${PREVIOUS_MODEL}
+      - # Option B: Switch provider
+      - export LLM_PROVIDER=mock  # emergency fallback
+      - # Option C: Lower temperature
+      - export GENERATION_TEMPERATURE=0.0
+    verify:
+      - "verification_pass_rate >= 0.85"
+      - "p95_latency_ms <= 3000"
+    rollback_time_estimate: 1 minute (env var change)
+
+  # ================================================================
+  # Dimension 6 — Tool Rollback
+  # ================================================================
+  - name: tool_rollback
+    description: "Disable failing tools or switch to mock fallback"
+    when:
+      - "tool_success_rate drops"
+      - "external API is down"
+      - "circuit breaker opens"
+    commands:
+      - # Option A: Disable specific tool
+      - export TOOL_DISABLED_create_ticket=true
+      - # Option B: Force mock fallback
+      - export TICKET_API_BASE_URL=""  # triggers mock
+      - export SYSTEM_STATUS_API_BASE_URL=""
+    verify:
+      - "tool_success_rate >= 0.90"
+      - "circuit breaker closed"
+    rollback_time_estimate: 1 minute
+
+  # ================================================================
+  # Dimension 7 — Verifier Rollback
+  # ================================================================
+  - name: verifier_rollback
+    description: "Switch verifier mode or lower strictness"
+    when:
+      - "false negative rate too high"
+      - "too many answers marked unverified"
+    commands:
+      - # Option A: Rule-based only
+      - export VERIFIER_MODE=rule_only
+      - # Option B: Lower threshold
+      - export VERIFICATION_STRICTNESS=lenient
+    verify:
+      - "verification_pass_rate >= 0.85"
+      - "false_pass_rate <= 0.05"
+    rollback_time_estimate: 1 minute
+
+  # ================================================================
+  # Dimension 8 — Memory Rollback
+  # ================================================================
+  - name: memory_rollback
+    description: "Disable memory subsystems that are causing issues"
+    when:
+      - "session history corrupted"
+      - "checkpoint loading fails"
+      - "summary generation degrades latency"
+    commands:
+      - # Option A: Disable summary memory
+      - export enable_summary_memory=false
+      - # Option B: Disable checkpoint
+      - export enable_checkpoint_memory=false
+      - # Option C: Disable all memory
+      - export enable_short_term_memory=true  # keep session isolation
+      - export enable_user_memory=true         # keep user profile
+    verify:
+      - "session isolation preserved"
+      - "no data corruption"
+    rollback_time_estimate: 1 minute
+
+  # ================================================================
+  # Auto-Rollback Trigger
+  # ================================================================
+  auto_rollback:
+    description: "Automatic rollback on metric violation"
+    triggers:
+      - metric: fallback_rate
+        condition: "current - baseline > 0.10"
+        action: "full_code_rollback"
+      - metric: error_rate
+        condition: "> 0.05"
+        action: "full_code_rollback"
+      - metric: p95_latency_ms
+        condition: "> baseline * 3"
+        action: "retriever_rollback"
