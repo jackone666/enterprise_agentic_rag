@@ -94,23 +94,7 @@ _MIGRATION_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-# Rule 4: Compatibility
-_COMPATIBILITY_KEYWORDS = re.compile(
-    r"兼容|支持吗|支持|API\s*Level|HarmonyOS\s*NEXT|OpenHarmony|"
-    r"支不支持|能不能用|可以用吗|是否支持|"
-    r"适配|兼容性|向下兼容|向上兼容|"
-    r"哪个版本|什么版本|几.*API|"
-    r"最低.*API|最高.*API|"
-    r"NEXT.*支持|NEXT.*兼容|NEXT.*能用|"
-    r"支持.*版本|兼容.*版本|"
-    r"API\s*\d+",
-    re.IGNORECASE,
-)
-
-# Note: compatibility check runs BEFORE api_usage to prevent
-# "API 9" / "API Level" from being caught by the api_usage rule.
-
-# Rule 5: API usage
+# Rule 4: API usage
 _API_USAGE_KEYWORDS = re.compile(
     r"怎么用|如何使用|参数|返回值|接口|组件|API|"
     r"使用方法|调用方式|怎么调|如何调|怎么发|如何发|"
@@ -125,9 +109,8 @@ _API_USAGE_KEYWORDS = re.compile(
 )
 
 # Note: _API_USAGE_KEYWORDS matches @ohos.* patterns directly.
-# Compatibility check runs first to avoid 'API Level' being caught by api_usage.
 
-# Rule 6: Concept QA
+# Rule 5: Concept QA
 _CONCEPT_QA_KEYWORDS = re.compile(
     r"是什么|区别|原理|机制|生命周期|"
     r"什么是|什么意思|含义|概念|"
@@ -137,37 +120,6 @@ _CONCEPT_QA_KEYWORDS = re.compile(
     r"为什么.*要|为什么要|"
     r"关系|联系|关联|"
     r"优点|缺点|优势|劣势|适用场景",
-    re.IGNORECASE,
-)
-
-# Best practice
-_BEST_PRACTICE_KEYWORDS = re.compile(
-    r"最佳实践|最佳.*做法|推荐.*做法|"
-    r"怎么.*更好|如何.*更好|哪个.*更好|"
-    r"性能优化|优化.*方案|"
-    r"安全.*建议|注意事项|"
-    r"规范|标准|约定|"
-    r"best.*practice|recommend",
-    re.IGNORECASE,
-)
-
-# Architecture
-_ARCHITECTURE_KEYWORDS = re.compile(
-    r"架构设计|架构.*方案|模块.*划分|"
-    r"工程.*结构|项目.*结构|目录.*结构|"
-    r"如何设计|怎么设计|设计方案|"
-    r"技术选型|方案选择|方案对比|"
-    r"系统设计|组件化|模块化",
-    re.IGNORECASE,
-)
-
-# Learning guidance
-_LEARNING_KEYWORDS = re.compile(
-    r"学习路径|学习路线|入门|新手|"
-    r"怎么学|如何学|从哪.*开始|"
-    r"教程|文档|资料|书|视频|课程|"
-    r"基础.*知识|前置.*知识|"
-    r"需要.*学|需要.*会|需要.*掌握",
     re.IGNORECASE,
 )
 
@@ -256,41 +208,17 @@ def rule_based_intent(query: str) -> RuleIntentResult:
         signals["migration"] = list(set(migration_matches))
         result.candidate_intents.append("migration")
 
-    # ── Rule 4: Compatibility ──
-    compat_matches = _COMPATIBILITY_KEYWORDS.findall(query)
-    if compat_matches:
-        signals["compatibility"] = list(set(compat_matches))
-        result.candidate_intents.append("compatibility")
-
-    # ── Rule 5: API usage ──
+    # ── Rule 4: API usage ──
     api_matches = _API_USAGE_KEYWORDS.findall(query)
     if api_matches:
         signals["api_usage"] = list(set(api_matches))
         result.candidate_intents.append("api_usage")
 
-    # ── Rule 6: Concept QA ──
+    # ── Rule 5: Concept QA ──
     concept_matches = _CONCEPT_QA_KEYWORDS.findall(query)
     if concept_matches:
         signals["concept_qa"] = list(set(concept_matches))
         result.candidate_intents.append("concept_qa")
-
-    # ── Best practice ──
-    best_practice_matches = _BEST_PRACTICE_KEYWORDS.findall(query)
-    if best_practice_matches:
-        signals["best_practice"] = list(set(best_practice_matches))
-        result.candidate_intents.append("best_practice")
-
-    # ── Architecture ──
-    arch_matches = _ARCHITECTURE_KEYWORDS.findall(query)
-    if arch_matches:
-        signals["architecture"] = list(set(arch_matches))
-        result.candidate_intents.append("architecture")
-
-    # ── Learning guidance ──
-    learn_matches = _LEARNING_KEYWORDS.findall(query)
-    if learn_matches:
-        signals["learning_guidance"] = list(set(learn_matches))
-        result.candidate_intents.append("learning_guidance")
 
     # ── Default fallback ──
     if not result.candidate_intents:
@@ -335,11 +263,6 @@ def _suggest_tools(result: RuleIntentResult) -> list[str]:
         if any(s in result.scenario_hints for s in ("build_error", "install_error")):
             tools.append("ticket_search")
 
-    elif primary == "project_debug":
-        tools.append("error_diagnosis_search")
-        tools.append("code_review")
-        tools.append("official_doc_search")
-
     elif primary == "code_generation":
         tools.append("sample_code_search")
         tools.append("api_reference_search")
@@ -351,27 +274,14 @@ def _suggest_tools(result: RuleIntentResult) -> list[str]:
         tools.append("official_doc_search")
         tools.append("api_reference_search")
 
-    elif primary == "compatibility":
-        tools.append("graph_search")
-        tools.append("version_compatibility_check")
-        tools.append("official_doc_search")
-
     elif primary == "api_usage":
         tools.append("api_reference_search")
         tools.append("sample_code_search")
         tools.append("official_doc_search")
 
-    elif primary in ("concept_qa", "best_practice"):
+    elif primary == "concept_qa":
         tools.append("official_doc_search")
         tools.append("hybrid_rag_search")
-
-    elif primary == "architecture":
-        tools.append("official_doc_search")
-        tools.append("graph_search")
-
-    elif primary == "learning_guidance":
-        tools.append("official_doc_search")
-        tools.append("sample_code_search")
 
     # Deduplicate preserving order
     seen = set()
@@ -387,19 +297,11 @@ def _suggest_mode(result: RuleIntentResult) -> str:
     """Suggest retrieval mode based on candidate intents."""
     primary = result.candidate_intents[0] if result.candidate_intents else ""
 
-    if primary in ("error_diagnosis", "project_debug"):
-        return "error_first"
-    elif primary == "migration":
-        return "graph_first"
-    elif primary == "compatibility":
+    if primary == "migration":
         return "graph_first"
     elif primary == "code_generation":
         return "parallel"
-    elif primary in ("concept_qa", "learning_guidance", "best_practice"):
-        return "hybrid_only"
     elif primary == "api_usage":
         return "parallel"
-    elif primary == "architecture":
-        return "graph_first"
     else:
         return "hybrid_only"

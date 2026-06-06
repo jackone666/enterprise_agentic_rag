@@ -107,9 +107,6 @@ class DynamicWeights:
         migration:
             graph_weight ↑↑, migration_guide_weight ↑↑
 
-        compatibility:
-            graph_weight ↑, version_meta_weight ↑↑
-
         code_generation:
             sample_code_weight ↑↑, official_doc_weight ↑, api_reference_weight ↑
 
@@ -137,15 +134,6 @@ class DynamicWeights:
             w.ticket_weight = 0.20
             w.official_doc_weight = 0.15
 
-        elif intent == "project_debug":
-            w.keyword_weight = 0.40
-            w.vector_weight = 0.25
-            w.graph_weight = 0.25
-            w.error_knowledge_weight = 0.30
-            w.official_doc_weight = 0.25
-            w.faq_weight = 0.20
-            w.ticket_weight = 0.15
-
         elif intent == "migration":
             w.keyword_weight = 0.20
             w.vector_weight = 0.25
@@ -154,15 +142,6 @@ class DynamicWeights:
             w.migration_guide_weight = 0.45
             w.official_doc_weight = 0.25
             w.api_reference_weight = 0.15
-
-        elif intent == "compatibility":
-            w.keyword_weight = 0.25
-            w.vector_weight = 0.25
-            w.graph_weight = 0.35
-            w.source_quality_weight = 0.15
-            w.version_meta_weight = 0.40
-            w.official_doc_weight = 0.30
-            w.graph_weight = 0.25  # override from above
 
         elif intent == "code_generation":
             w.keyword_weight = 0.25
@@ -180,23 +159,6 @@ class DynamicWeights:
             w.source_quality_weight = 0.15
             w.official_doc_weight = 0.45
             w.api_reference_weight = 0.20
-
-        elif intent == "best_practice":
-            w.keyword_weight = 0.25
-            w.vector_weight = 0.35
-            w.graph_weight = 0.20
-            w.source_quality_weight = 0.20
-            w.official_doc_weight = 0.40
-
-        elif intent == "architecture":
-            w.keyword_weight = 0.20
-            w.vector_weight = 0.30
-            w.graph_weight = 0.35
-            w.source_quality_weight = 0.15
-            w.official_doc_weight = 0.35
-            w.migration_guide_weight = 0.15
-
-        # learning_guidance: use defaults
 
         return w
 
@@ -243,17 +205,12 @@ _DEEP_INTENT_KEYWORD_HEAVY = frozenset({
     "api_usage",
     "code_generation",
     "error_diagnosis",
-    "project_debug",
-    "compatibility",
 })
 _DEEP_INTENT_VECTOR_HEAVY = frozenset({
     "concept_qa",
-    "best_practice",
-    "learning_guidance",
 })
 _DEEP_INTENT_GRAPH_HEAVY = frozenset({
     "migration",
-    "architecture",
 })
 
 # ---------------------------------------------------------------------------

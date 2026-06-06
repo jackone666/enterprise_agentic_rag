@@ -31,10 +31,6 @@ class TestDynamicWeights:
         assert w.graph_weight > 0.3  # Graph-heavy for migration
         assert w.migration_guide_weight > 0.3
 
-    def test_compatibility_weights(self):
-        w = DynamicWeights.for_intent("compatibility")
-        assert w.version_meta_weight > 0.3
-
     def test_code_generation_weights(self):
         w = DynamicWeights.for_intent("code_generation")
         assert w.sample_code_weight > 0.3  # Code-heavy

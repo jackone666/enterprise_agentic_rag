@@ -32,9 +32,9 @@ class TestRuleBasedIntent:
         assert "permission_error" in result.scenario_hints or len(result.signals.get("error_diagnosis", [])) > 0
 
     def test_project_debug_detection(self):
-        """Rule 1b: error + project keywords → project_debug."""
+        """Rule 1b: error + project keywords → error_diagnosis (project_debug intent removed)."""
         result = rule_based_intent("首页白屏怎么办？项目启动就白屏")
-        assert ("error_diagnosis" in result.candidate_intents or "project_debug" in result.candidate_intents)
+        assert "error_diagnosis" in result.candidate_intents
 
     def test_code_generation_detection(self):
         """Rule 2: code generation keywords."""
@@ -45,11 +45,6 @@ class TestRuleBasedIntent:
         """Rule 3: migration keywords."""
         result = rule_based_intent("Router 怎么迁移到 Navigation？")
         assert "migration" in result.candidate_intents
-
-    def test_compatibility_detection(self):
-        """Rule 4: compatibility keywords."""
-        result = rule_based_intent("API 9 支持 Navigation 吗？")
-        assert "compatibility" in result.candidate_intents
 
     def test_api_usage_detection(self):
         """Rule 5: API usage keywords."""
@@ -62,9 +57,9 @@ class TestRuleBasedIntent:
         assert "concept_qa" in result.candidate_intents
 
     def test_suggested_mode_error(self):
-        """Error queries → error_first mode."""
+        """Error queries → hybrid_only mode (error_first removed, error handled via weights)."""
         result = rule_based_intent("hvigor ERROR: compile failed")
-        assert result.suggested_mode == "error_first"
+        assert result.suggested_mode == "hybrid_only"
 
     def test_suggested_mode_migration(self):
         """Migration queries → graph_first mode."""
@@ -278,11 +273,11 @@ class TestRequiredCases:
     def test_case_3_error_diagnosis(self):
         """'BusinessError: permission denied 怎么办？'
         Expected: primary_intent=error_diagnosis, scenario=permission_error,
-        mode=error_first, tools include error_diagnosis_search, official_doc_search
+        mode=hybrid_only, tools include error_diagnosis_search, official_doc_search
         """
         result = rule_based_intent("BusinessError: permission denied 怎么办？")
         assert "error_diagnosis" in result.candidate_intents
-        assert result.suggested_mode == "error_first"
+        assert result.suggested_mode == "hybrid_only"
         assert any(t in result.suggested_tools for t in ("error_diagnosis_search", "official_doc_search"))
 
     def test_case_4_migration(self):
@@ -295,16 +290,6 @@ class TestRequiredCases:
         assert result.suggested_mode == "graph_first"
         assert "graph_search" in result.suggested_tools
 
-    def test_case_5_compatibility(self):
-        """'API 9 支持 Navigation 吗？'
-        Expected: primary_intent=compatibility, mode=graph_first,
-        tools include version_compatibility_check
-        """
-        result = rule_based_intent("API 9 支持 Navigation 吗？")
-        assert "compatibility" in result.candidate_intents
-        assert result.suggested_mode == "graph_first"
-        assert "version_compatibility_check" in result.suggested_tools
-
     def test_case_6_code_generation(self):
         """'帮我写一个鸿蒙登录页面'
         Expected: primary_intent=code_generation, mode=parallel,
@@ -316,13 +301,12 @@ class TestRequiredCases:
 
     def test_case_7_project_debug(self):
         """'首页白屏怎么办？'
-        Expected: primary_intent=error_diagnosis or project_debug,
-        scenario=white_screen, mode=error_first or code_first,
-        missing_context contains 运行日志、入口文件、API Level
+        Expected: primary_intent=error_diagnosis,
+        scenario=white_screen, mode=hybrid_only (project_debug and error_first removed)
         """
         result = rule_based_intent("首页白屏怎么办？")
-        assert ("error_diagnosis" in result.candidate_intents or "project_debug" in result.candidate_intents)
+        assert "error_diagnosis" in result.candidate_intents
         # White screen scenario should be detected
         assert "white_screen" in result.scenario_hints
-        # Mode should be error_first for error-type queries
-        assert result.suggested_mode in ("error_first", "code_first")
+        # Mode is hybrid_only (error_first removed)
+        assert result.suggested_mode == "hybrid_only"

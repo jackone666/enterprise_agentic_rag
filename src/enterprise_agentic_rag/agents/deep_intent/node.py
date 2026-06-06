@@ -111,15 +111,10 @@ def _build_rule_dict(
     # Determine answer_style from primary intent
     style_map = {
         "error_diagnosis": "diagnosis_steps",
-        "project_debug": "diagnosis_steps",
         "code_generation": "explanation_with_code",
         "migration": "migration_plan",
         "api_usage": "explanation_with_code",
-        "architecture": "architecture_proposal",
-        "learning_guidance": "learning_path",
         "concept_qa": "direct_answer",
-        "best_practice": "direct_answer",
-        "compatibility": "direct_answer",
     }
 
     return {
@@ -134,9 +129,9 @@ def _build_rule_dict(
         "constraints": {
             "needs_code_example": primary == "code_generation",
             "needs_before_after_code": primary == "migration",
-            "needs_checklist": primary in ("error_diagnosis", "project_debug"),
+            "needs_checklist": primary == "error_diagnosis",
             "prefer_official_docs": True,
-            "requires_version_check": primary == "compatibility",
+            "requires_version_check": False,
         },
         "difficulty": "medium",
         "risk_level": "low",

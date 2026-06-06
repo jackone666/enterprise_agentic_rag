@@ -1,20 +1,17 @@
 """Workflows — reusable retrieval execution patterns.
 
-Each workflow implements a specific retrieval mode:
-- hybrid_rag_workflow.py — keyword + vector hybrid (default fallback)
-- graph_first_workflow.py — graph → expand → keyword + vector
-- error_first_workflow.py — error KB → faq/ticket/official/vector
-- code_generation_workflow.py — sample → api_ref → official_doc → code_review
+All 4 mode-specific workflows (hybrid, graph-first, error-first,
+code-generation) are merged into a single :class:`BaseRAGWorkflow` class
+that dispatches by ``mode`` parameter.
+
+Available modes (maps to ``RetrievalMode`` in deep_intent/schema):
+    hybrid_only  — keyword + vector parallel (default / fallback)
+    graph_first  — graph search → expanded query → keyword + vector
+    parallel     — multi-source parallel → keyword + vector
 """
 
-from enterprise_agentic_rag.workflows.code_generation_workflow import CodeGenerationWorkflow
-from enterprise_agentic_rag.workflows.error_first_workflow import ErrorFirstWorkflow
-from enterprise_agentic_rag.workflows.graph_first_workflow import GraphFirstWorkflow
-from enterprise_agentic_rag.workflows.hybrid_rag_workflow import HybridRAGWorkflow
+from enterprise_agentic_rag.workflows.base_rag_workflow import BaseRAGWorkflow
 
 __all__ = [
-    "HybridRAGWorkflow",
-    "GraphFirstWorkflow",
-    "ErrorFirstWorkflow",
-    "CodeGenerationWorkflow",
+    "BaseRAGWorkflow",
 ]

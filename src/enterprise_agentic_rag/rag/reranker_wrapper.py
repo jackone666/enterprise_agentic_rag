@@ -169,10 +169,6 @@ class RerankerWrapper:
                 kw in content for kw in ("migration", "迁移", "升级", "废弃")
             ):
                 boost = 1.3
-            elif intent == "compatibility" and any(
-                kw in content for kw in ("version", "兼容", "api level", "harmonyos")
-            ):
-                boost = 1.2
             elif intent == "concept_qa" and ("official" in source or "doc" in doc_type):
                 boost = 1.15
 

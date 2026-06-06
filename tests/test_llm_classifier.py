@@ -163,8 +163,7 @@ class TestLLMClassifierIntegration:
         assert "primary_intent" in result
         assert result["primary_intent"] in (
             "concept_qa", "api_usage", "code_generation", "error_diagnosis",
-            "migration", "compatibility", "project_debug", "best_practice",
-            "architecture", "learning_guidance",
+            "migration",
         )
 
     async def test_classifier_with_rule_hints(self):
@@ -173,7 +172,7 @@ class TestLLMClassifierIntegration:
             candidate_intents=["error_diagnosis"],
             scenario_hints=["崩溃排查"],
             suggested_tools=["error_diagnosis_search"],
-            suggested_mode="error_first",
+            suggested_mode="hybrid_only",
         )
         result = await llm_deep_intent_classifier(
             query="应用启动报错401",

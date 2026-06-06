@@ -257,10 +257,6 @@ class TestMasterAgentHelperMethods:
         state = _state(deep_intent={"primary_intent": "error_diagnosis"})
         assert MasterAgent._requires_tools(state) is True
 
-    def test_requires_tools_project_debug(self):
-        state = _state(deep_intent={"primary_intent": "project_debug"})
-        assert MasterAgent._requires_tools(state) is True
-
     def test_requires_tools_ticket_keyword(self):
         state = _state(deep_intent={"primary_intent": "concept_qa"}, query="我的工单状态")
         assert MasterAgent._requires_tools(state) is True

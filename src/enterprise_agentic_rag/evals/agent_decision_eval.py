@@ -89,7 +89,7 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         query="@ohos.app.ability 怎么创建 Ability？",
         expected_intent="api_usage",
         expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="code_first",
+        expected_retrieval_mode="parallel",
         tags=["api", "ability"],
     ),
 
@@ -98,7 +98,7 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         query="用 TypeScript 写一个 HarmonyOS 的网络请求示例",
         expected_intent="code_generation",
         expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="code_first",
+        expected_retrieval_mode="parallel",
         needs_code=True,
         tags=["code", "typescript"],
     ),
@@ -108,7 +108,7 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         query="错误码 15500000 是什么原因？",
         expected_intent="error_diagnosis",
         expected_next_node="call_tools",
-        expected_retrieval_mode="graph_first",
+        expected_retrieval_mode="hybrid_only",
         needs_tools=True,
         tags=["error", "error_code"],
     ),
@@ -120,25 +120,6 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         expected_next_node="retrieve_knowledge",
         expected_retrieval_mode="graph_first",
         tags=["migration", "fa", "stage"],
-    ),
-
-    # ── compatibility ──
-    DecisionTestCase(
-        query="我的应用在 HarmonyOS NEXT 上兼容吗？",
-        expected_intent="compatibility",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="graph_first",
-        tags=["compatibility", "harmonyos_next"],
-    ),
-
-    # ── project_debug ──
-    DecisionTestCase(
-        query="我的 app 在 API 12 上启动崩溃怎么调试？",
-        expected_intent="project_debug",
-        expected_next_node="call_tools",
-        expected_retrieval_mode="graph_first",
-        needs_tools=True,
-        tags=["debug", "crash"],
     ),
 
     # ── Edge case (ambiguous query) ──

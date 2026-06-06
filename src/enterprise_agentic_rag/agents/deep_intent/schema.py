@@ -21,11 +21,6 @@ class IntentCategory(str, Enum):
     CODE_GENERATION = "code_generation"
     ERROR_DIAGNOSIS = "error_diagnosis"
     MIGRATION = "migration"
-    COMPATIBILITY = "compatibility"
-    PROJECT_DEBUG = "project_debug"
-    BEST_PRACTICE = "best_practice"
-    ARCHITECTURE = "architecture"
-    LEARNING_GUIDANCE = "learning_guidance"
 
 
 class RetrievalMode(str, Enum):
@@ -33,8 +28,6 @@ class RetrievalMode(str, Enum):
     HYBRID_ONLY = "hybrid_only"
     PARALLEL = "parallel"
     GRAPH_FIRST = "graph_first"
-    ERROR_FIRST = "error_first"
-    CODE_FIRST = "code_first"
 
 
 class AnswerStyle(str, Enum):

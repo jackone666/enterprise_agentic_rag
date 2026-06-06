@@ -56,6 +56,64 @@ def after_permission(state: AgentState) -> Literal["deep_intent_recognition", "f
     return "deep_intent_recognition"
 
 
+def after_deep_intent(state: AgentState) -> Literal["retrieve_knowledge", "master_agent"]:
+    """Happy path: intent → retrieval directly. Exception: route through master_agent."""
+    deep_intent = state.get("deep_intent", {})
+    needs_clarification = deep_intent.get("needs_clarification", False)
+    confidence = deep_intent.get("confidence", 0.5)
+
+    # Exception: needs clarification with low confidence → human fallback via master
+    if needs_clarification and confidence < 0.2:
+        return "master_agent"
+
+    # Exception: requires tools (error_diagnosis) → master routes to call_tools
+    primary = deep_intent.get("primary_intent", "")
+    if primary == "error_diagnosis":
+        return "master_agent"
+
+    # Happy path: direct to retrieval
+    return "retrieve_knowledge"
+
+
+def after_retrieval(state: AgentState) -> Literal["build_context", "master_agent"]:
+    """Happy path: retrieval → context build directly. Exception: route through master."""
+    docs = state.get("retrieved_docs", [])
+    fallback_reason = state.get("fallback_reason", "")
+
+    # Happy path: usable docs found
+    if docs and any(d.get("score", 0) > 0 for d in docs):
+        return "build_context"
+
+    # Exception: low score with retry exhausted → human fallback via master
+    if fallback_reason == "low_retrieval_score":
+        return "master_agent"
+
+    # Happy path: continue to context build even with empty docs (code request)
+    return "build_context"
+
+
+def after_context(state: AgentState) -> Literal["generate_answer", "generate_code"]:
+    """Context ready: direct to answer generation unless code required."""
+    from enterprise_agentic_rag.agents.master_agent import MasterAgent
+
+    if MasterAgent._requires_code(state) and not state.get("code_snippet", ""):
+        return "generate_code"
+    return "generate_answer"
+
+
+def after_answer(state: AgentState) -> Literal["verify_answer", "finalize_answer"]:
+    """Draft answer ready → direct to verification."""
+    return "verify_answer"
+
+
+def after_verification(state: AgentState) -> Literal["finalize_answer", "master_agent"]:
+    """Verification complete → finalize. Exception: route through master for retry."""
+    if state.get("verified", False):
+        return "finalize_answer"
+    # Verification failed → route through master for retry
+    return "master_agent"
+
+
 def after_master(
     state: AgentState,
 ) -> Literal[
@@ -124,17 +182,64 @@ def build_workflow() -> StateGraph:
         },
     )
 
-    # All worker nodes report back to the master; the master picks the next.
-    for worker in (
+    # Happy path: intent → retrieval (bypass master)
+    builder.add_conditional_edges(
         "deep_intent_recognition",
-        "call_tools",
+        after_deep_intent,
+        {
+            "retrieve_knowledge": "retrieve_knowledge",
+            "master_agent": "master_agent",
+        },
+    )
+
+    # Happy path: retrieval → context build (bypass master)
+    builder.add_conditional_edges(
         "retrieve_knowledge",
-        "rewrite_query",
+        after_retrieval,
+        {
+            "build_context": "build_context",
+            "master_agent": "master_agent",
+        },
+    )
+
+    # Happy path: context → answer generation (bypass master)
+    builder.add_conditional_edges(
         "build_context",
+        after_context,
+        {
+            "generate_answer": "generate_answer",
+            "generate_code": "generate_code",
+        },
+    )
+
+    # Happy path: answer → verification (bypass master)
+    builder.add_conditional_edges(
+        "generate_answer",
+        after_answer,
+        {
+            "verify_answer": "verify_answer",
+            "finalize_answer": "finalize_answer",
+        },
+    )
+
+    # Happy path: verification → finalize (bypass master); exception → master
+    builder.add_conditional_edges(
+        "verify_answer",
+        after_verification,
+        {
+            "finalize_answer": "finalize_answer",
+            "master_agent": "master_agent",
+        },
+    )
+
+    # Exception paths: call_tools, rewrite_query, generate_code, execute_code,
+    # human_fallback → route through master_agent
+    for worker in (
+        "call_tools",
+        "rewrite_query",
         "generate_code",
         "execute_code",
-        "generate_answer",
-        "verify_answer",
+        "human_fallback",
     ):
         builder.add_edge(worker, "master_agent")
 

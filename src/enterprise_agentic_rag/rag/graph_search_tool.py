@@ -94,7 +94,7 @@ class GraphRetrieverTool:
                 "original_query": query,
             }
 
-            depth = 2 if intent in ("migration", "compatibility") else 1
+            depth = 2 if intent == "migration" else 1
 
             candidates = gr.retrieve(
                 query_analysis=query_analysis,

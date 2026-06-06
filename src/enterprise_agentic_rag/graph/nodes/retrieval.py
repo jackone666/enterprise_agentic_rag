@@ -1,12 +1,12 @@
 """Retrieval and query-rewrite nodes.
 
-The ``retrieve_knowledge`` node implements the 5-tier fallback chain:
+The ``retrieve_knowledge`` node implements the 3-tier fallback chain:
 - Tier 0: semantic cache
-- Tier 1: intent-aware workflow dispatch (hybrid / graph / error / code)
-- Tier 2: GraphRAG Orchestrator
-- Tier 3: legacy Retriever
-- Tier 4: external search augmentation
-- Tier 5: write-back to cache
+- Tier 1: BaseRAGWorkflow dispatch (hybrid_only / graph_first / parallel)
+- Tier 2: write-back to cache
+
+No Tier 2 (GraphRAG Orchestrator) or Tier 3 (legacy Retriever) fallback —
+BaseRAGWorkflow handles all modes internally with graceful degradation.
 """
 
 from __future__ import annotations
@@ -17,27 +17,36 @@ import time
 from typing import Any
 
 from enterprise_agentic_rag.graph.cache import cache_scope
-from enterprise_agentic_rag.graph.dependencies import recovery, retriever, tracer
+from enterprise_agentic_rag.graph.dependencies import tracer
 from enterprise_agentic_rag.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
 
+# Mode mapping: schema RetrievalMode → BaseRAGWorkflow mode
+_MODE_MAP = {
+    "hybrid_only": "hybrid_only",
+    "graph_first": "graph_first",
+    "parallel": "parallel",
+    # Deprecated schema values mapped to nearest supported mode
+    "code_first": "parallel",
+    "error_first": "hybrid_only",  # error content handled by keyword weights inside workflow
+}
+
+
 async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
-    """Retrieve knowledge — dispatches to intent-aware retrieval workflow.
+    """Retrieve knowledge — dispatches to BaseRAGWorkflow by mode.
 
     Dispatch logic (based on deep_intent RetrievalMode):
-    - graph_first → GraphFirstWorkflow (migration, compatibility, API relationships)
-    - error_first → ErrorFirstWorkflow (error diagnosis, crash analysis)
-    - code_first → CodeGenerationWorkflow (code gen, API usage examples)
-    - hybrid_only / parallel / default → HybridRAGWorkflow
+    - graph_first  → BaseRAGWorkflow(mode="graph_first")
+    - parallel      → BaseRAGWorkflow(mode="parallel")  [code gen, API usage]
+    - hybrid_only / default → BaseRAGWorkflow(mode="hybrid_only")
 
     Also integrates:
     - Semantic cache: skip retrieval on cache hit
-    - External search: augment with GitHub/StackOverflow/Web results
-    - Cross-Encoder reranking: used inside each workflow
+    - Cross-Encoder reranking: used inside the workflow
 
-    Falls back gracefully on any failure.
+    Falls back gracefully on any failure (returns empty evidence + logs).
     """
     query = state.get("query", "")
     permission_scope = cache_scope(state)
@@ -80,77 +89,30 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
     entities = deep_intent.get("entities", {})
     top_k = 10
 
-    # ── Tier 1: Dispatch to intent-aware workflow ──
+    # Map to supported workflow mode
+    workflow_mode = _MODE_MAP.get(mode, "hybrid_only")
+
+    # ── Tier 1: BaseRAGWorkflow dispatch ──
     errors: list[str] = []
     workflow_result: dict[str, Any] = {}
 
     try:
-        if mode == "graph_first":
-            from enterprise_agentic_rag.workflows.graph_first_workflow import GraphFirstWorkflow
+        from enterprise_agentic_rag.workflows import BaseRAGWorkflow
 
-            wf = GraphFirstWorkflow()
-            workflow_result = await wf.execute(
-                query=query, top_k=top_k, intent=primary_intent, entities=entities,
-            )
-        elif mode == "error_first":
-            from enterprise_agentic_rag.workflows.error_first_workflow import ErrorFirstWorkflow
-
-            wf = ErrorFirstWorkflow()
-            workflow_result = await wf.execute(
-                query=query, top_k=top_k, intent=primary_intent, entities=entities,
-            )
-        elif mode == "code_first":
-            from enterprise_agentic_rag.workflows.code_generation_workflow import CodeGenerationWorkflow
-
-            wf = CodeGenerationWorkflow()
-            workflow_result = await wf.execute(
-                query=query, top_k=top_k, intent=primary_intent, entities=entities,
-            )
-        else:
-            from enterprise_agentic_rag.workflows.hybrid_rag_workflow import HybridRAGWorkflow
-
-            wf = HybridRAGWorkflow()
-            workflow_result = await wf.execute(
-                query=query, top_k=top_k, intent=primary_intent, entities=entities,
-            )
-
+        wf = BaseRAGWorkflow()
+        workflow_result = await wf.execute(
+            query=query,
+            mode=workflow_mode,
+            top_k=top_k,
+            intent=primary_intent,
+            entities=entities,
+        )
         errors.extend(workflow_result.get("errors", []))
 
     except Exception as exc:
-        logger.warning("Intent-aware workflow failed: %s — falling back to original RAG", exc)
-        errors.append(f"Workflow dispatch failed: {exc}")
-        workflow_result = {}
-
-    # ── Tier 2: Fallback to original GraphRAG Orchestrator ──
-    if not workflow_result.get("selected_evidence"):
-        try:
-            from enterprise_agentic_rag.rag.graph_rag_orchestrator import GraphRAGOrchestrator
-
-            orchestrator = GraphRAGOrchestrator()
-            rag_result = await orchestrator.retrieve(
-                query=query,
-                query_analysis=state.get("query_analysis"),
-                top_k=5,
-            )
-            workflow_result["selected_evidence"] = rag_result.get("retrieved_docs", [])
-            if rag_result.get("errors"):
-                errors.extend(rag_result["errors"])
-        except Exception as exc:
-            logger.warning("GraphRAG orchestrator fallback failed: %s", exc)
-            errors.append(f"GraphRAG fallback failed: {exc}")
-
-    # ── Tier 3: Ultimate fallback to old Retriever ──
-    if not workflow_result.get("selected_evidence"):
-        try:
-            results = retriever.search(query)
-            workflow_result["selected_evidence"] = results
-        except Exception as exc:
-            logger.warning("Ultimate retriever fallback failed: %s", exc)
-            errors.append(f"Ultimate retriever fallback failed: {exc}")
-            workflow_result["selected_evidence"] = []
-
-    # ── Tier 4: External search augmentation ──
-    # (external search disabled — moved to retrieval agent layer in v3.2)
+        logger.warning("BaseRAGWorkflow failed: %s — returning empty evidence", exc)
+        errors.append(f"BaseRAGWorkflow failed: {exc}")
+        workflow_result = {"selected_evidence": [], "errors": errors}
 
     # ── Assemble results ──
     evidence = workflow_result.get("selected_evidence", [])
@@ -179,9 +141,11 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
         "last_agent_step": "retrieve",
     }
 
-    # ── Tier 5: Store in semantic cache ──
+    # ── Tier 2: Store in semantic cache ──
     if evidence:
         try:
+            from enterprise_agentic_rag.rag.semantic_cache import get_semantic_cache
+
             cache = get_semantic_cache()
             if cache.enabled:
                 cacheable = {
@@ -196,14 +160,27 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
 
     # Check for no results / low quality
     if not evidence or all(r.get("score", 0) <= 0 for r in evidence):
-        fb = recovery.evaluate_failure(dict(state), fallback_type="no_relevant_docs")
+        fb = _evaluate_failure(dict(state), fallback_type="no_relevant_docs")
         return {**result_state, **fb}
 
     if all(r.get("score", 0) < 0.1 for r in evidence):
-        fb = recovery.evaluate_failure(dict(state), fallback_type="low_retrieval_score")
+        fb = _evaluate_failure(dict(state), fallback_type="low_retrieval_score")
         return {**result_state, **fb}
 
     return result_state
+
+
+def _evaluate_failure(state: dict[str, Any], fallback_type: str) -> dict[str, Any]:
+    """Evaluate failure and return recovery actions.
+
+    Imports recovery lazily to avoid circular dependencies.
+    """
+    try:
+        from enterprise_agentic_rag.graph.dependencies import recovery
+
+        return recovery.evaluate_failure(state, fallback_type=fallback_type)
+    except Exception:
+        return {}
 
 
 async def rewrite_query(state: AgentState) -> dict[str, Any]:
@@ -212,13 +189,20 @@ async def rewrite_query(state: AgentState) -> dict[str, Any]:
     Records the retry and produces a reformulated query.
     """
     original = state.get("query", "")
-    rewritten = recovery.rewrite_query(original)
 
-    retry_updates = recovery.record_retry(
-        dict(state),
-        node_key="retrieve",
-        reason=f"原始查询无结果，改写为: {rewritten}",
-    )
+    try:
+        from enterprise_agentic_rag.graph.dependencies import recovery
+
+        rewritten = recovery.rewrite_query(original)
+        retry_updates = recovery.record_retry(
+            dict(state),
+            node_key="retrieve",
+            reason=f"原始查询无结果，改写为: {rewritten}",
+        )
+    except Exception:
+        # Recovery unavailable — use simple rewrite
+        rewritten = original
+        retry_updates = {}
 
     return {
         **retry_updates,

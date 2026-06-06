@@ -384,7 +384,7 @@ class MasterAgent:
     @classmethod
     def _requires_tools(cls, state: dict[str, Any]) -> bool:
         primary = cls._primary_intent(state)
-        if primary in {"error_diagnosis", "project_debug"}:
+        if primary == "error_diagnosis":
             return True
 
         query = cls._query_text(state)
@@ -400,7 +400,7 @@ class MasterAgent:
         """Map deep intent/query facts to the legacy tool-agent intent labels."""
         primary = cls._primary_intent(state)
         query = cls._query_text(state)
-        if primary in {"error_diagnosis", "project_debug"}:
+        if primary == "error_diagnosis":
             return "troubleshooting"
         if "工单" in query or "ticket" in query or "tkt-" in query:
             return "ticket_query"
