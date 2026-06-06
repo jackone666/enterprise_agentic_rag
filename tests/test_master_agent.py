@@ -295,9 +295,17 @@ class TestMasterDecision:
     """Test MasterDecision dataclass."""
 
     def test_decision_to_dict(self):
-        d = MasterDecision(next_node="retrieve_knowledge", reason="test reason")
+        d = MasterDecision(
+            next_node="retrieve_knowledge",
+            reason="test reason",
+            routing_path="llm",
+        )
         result = d.to_dict()
-        assert result == {"next_node": "retrieve_knowledge", "reason": "test reason"}
+        assert result == {
+            "next_node": "retrieve_knowledge",
+            "reason": "test reason",
+            "routing_path": "llm",
+        }
 
     def test_decision_is_frozen(self):
         d = MasterDecision(next_node="retrieve_knowledge", reason="test")

@@ -249,40 +249,6 @@ class MasterAgent:
             logger.debug("LLM routing decision failed, falling back to rules: %s", exc)
             return None
 
-
-def _resolve_rule_path(state: dict[str, Any]) -> str:
-    """Determine whether rules ran as a fallback or as the primary path.
-
-    Returns ``"rule_direct"`` when the LLM was never even attempted
-    (e.g. mock provider); ``"rule"`` when the LLM was attempted but
-    failed. This distinction matters for observability — operators
-    want to know if the LLM router is actually exercising code paths.
-    """
-    try:
-        from enterprise_agentic_rag.llm.provider_factory import get_llm_provider
-
-        provider = get_llm_provider()
-        if provider.provider_name == "mock":
-            return "rule_direct"
-    except Exception:
-        # If we can't even build a provider, treat the rule path as a fallback
-        return "rule"
-    return "rule"
-
-
-def _with_routing_path(decision: MasterDecision, path: str) -> MasterDecision:
-    """Return a new MasterDecision tagged with the given routing_path.
-
-    ``MasterDecision`` is frozen, so we reconstruct it. Kept as a
-    helper because we set the field in two places (decide() and any
-    future direct callers).
-    """
-    return MasterDecision(
-        next_node=decision.next_node,
-        reason=decision.reason,
-        routing_path=path,
-    )
-
     @staticmethod
     def _extract_routing_json(text: str) -> dict[str, Any] | None:
         """Extract a routing JSON object from LLM response text."""
@@ -439,3 +405,42 @@ def _with_routing_path(decision: MasterDecision, path: str) -> MasterDecision:
         if "工单" in query or "ticket" in query or "tkt-" in query:
             return "ticket_query"
         return primary
+
+
+# ===========================================================================
+# Module-level helpers for routing_path tagging
+# ===========================================================================
+
+
+def _resolve_rule_path(state: dict[str, Any]) -> str:
+    """Determine whether rules ran as a fallback or as the primary path.
+
+    Returns ``"rule_direct"`` when the LLM was never even attempted
+    (e.g. mock provider); ``"rule"`` when the LLM was attempted but
+    failed. This distinction matters for observability — operators
+    want to know if the LLM router is actually exercising code paths.
+    """
+    try:
+        from enterprise_agentic_rag.llm.provider_factory import get_llm_provider
+
+        provider = get_llm_provider()
+        if provider.provider_name == "mock":
+            return "rule_direct"
+    except Exception:
+        # If we can't even build a provider, treat the rule path as a fallback
+        return "rule"
+    return "rule"
+
+
+def _with_routing_path(decision: MasterDecision, path: str) -> MasterDecision:
+    """Return a new MasterDecision tagged with the given routing_path.
+
+    ``MasterDecision`` is frozen, so we reconstruct it. Kept as a
+    helper because we set the field in two places (decide() and any
+    future direct callers).
+    """
+    return MasterDecision(
+        next_node=decision.next_node,
+        reason=decision.reason,
+        routing_path=path,
+    )
