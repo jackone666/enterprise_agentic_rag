@@ -267,6 +267,30 @@ graph TB
 
 ### 五、Worker Agent 详细职责
 
+#### 5.0、6 Agent 内部结构速查表
+
+> 用于面试时被问"每个 agent 内部具体怎么实现",用这张表 30 秒讲清。
+
+| Agent | 文件 / 形式 | 行数 | 核心入口 | 内部方法 | 关键数据结构 | 关键依赖 |
+|---|---|---|---|---|---|---|
+| **MasterAgent** | `agents/master_agent.py` · class | 446 | `MasterAgent.decide(state) → MasterDecision` | `_llm_decide` / `_rule_decide` / `_build_routing_prompt` / `_validate_decision` / 6 个 `_after_xxx` 决定函数 | `MasterDecision(next_node, reason, routing_path)` frozen dataclass;`routing_path ∈ {"llm", "rule", "rule_direct"}` | `RecoveryManager`, `LLMProvider` |
+| **ToolAgent** | `agents/tool_agent.py` · async function | 167 | `call_tools(query, intent, user_id, perms) → (results, calls, errors, pending)` | `_select_tools(query, intent)` 选工具; 调 `BaseTool.execute` | 全局 `ToolRegistry` 单例;每个工具 3 档 tier(safe/sensitive/destructive) | `ToolRegistry`, 6 个 `BaseTool` 子类, `permission_tool` |
+| **KnowledgeAgent** | `agents/knowledge_agent.py` · async + sync | 103 | `generate_answer_async(query, docs) → (answer, citations)` | `generate_answer` (sync fallback); `_generate_template` / `_generate_with_llm_async` | 拼 prompt:system_role + docs + chat_history + user_profile | `LLMProvider`, `context_manager.build_context` |
+| **CodeGenerator** ⚙️ | `prompts/code_prompts.py` · sync function (非 agent,prompt utility) | 363 | `generate_code(query, docs, language) → dict` | `_detect_language`; `_generate_template`; `_generate_with_llm`; `_extract_symbols_from_docs`(AST 解析); `_format_symbols_for_prompt` | 把 docs 里的 import/function/class/method_call AST 符号抽出来喂给 LLM | `LLMProvider`, `rag.graph.code_symbol_extractor` |
+| **CodeExecutor** | `agents/code_executor.py` · class | 110 | `CodeExecutor().run(code, language) → ExecutionResult` | `_is_retryable(error)` 静态方法:SyntaxError/TypeError 可重试,NameError 不重试 | `max_retries: int = 2` 实例属性;ExecutionResult 状态封装 | `get_code_execution_tool()` 沙箱 |
+| **VerifierAgent** | `agents/verifier_agent.py` · async + sync | 229 | `verify_answer_async(draft, citations, docs) → (verified, reason)` | `verify_answer` (sync); `_verify_rules`(2 类规则:claim 断言 + citation 匹配); `_verify_with_llm_async` | 优先级 链:规则 → LLM → 规则;v3.2 后规则从 6 类砍到 2 类 | `LLMProvider` |
+| **RetrievalAgent** 🆕 | `agents/retrieval_agent.py` · class | 376 | `RetrievalAgent().run(state) → state_patch` | `_try_cache` / `_cache_result` / `_retrieve_with_retry` / `_resolve_mode` / `_assemble_result` / `_is_retryable` / `_evaluate_failure` / `_record_event` | 工作记忆 `_events: list[RetrievalEvent]`;`retrieval_path ∈ {"cache_hit", "workflow", "fail"}`; 3-tier 降级(cached → workflow → fail) | `BaseRAGWorkflow`, `SemanticCache`, `Tracer`, `RecoveryManager` |
+
+> ⚙️ CodeGenerator 不是 agent —— 跟 KnowledgeAgent 同级,是 prompt utility(降级自原 CodeAgent)。
+> 🆕 RetrievalAgent 是 v3.2 新增,把 RAG 层封装为 Agent 抽象,内部仍 deterministic。
+
+**Agent 内部实现的 4 个共性模式**:
+
+1. **接口统一**:除 `CodeGenerator`(prompt utility)外,所有 Agent 暴露 `async def run(state) -> state_patch`,LangGraph 节点调它时只关心 patch 增量。
+2. **降级三级化**:LLM 调用 → 规则 → mock/template。`MasterAgent._llm_decide` 失败时回 `_rule_decide`;`CodeExecutor._is_retryable` 失败时直接返 fail;`RetrievalAgent` 三级降级(cached → workflow → fail)。
+3. **可观测必装**:每个 Agent 都通过 `tracer.record_xxx_event` 写事件;`MasterAgent` 用 `routing_path` 标注 LLM/rule 路径;`RetrievalAgent` 用 `retrieval_path` 标注 cache/workflow 路径。
+4. **状态自管**:除 MasterAgent 持有 `RecoveryManager`、RetrievalAgent 持有 `Cache+Workflow+Tracer`、CodeExecutor 持有 `max_retries` 外,其他 Agent(Tool/Knowledge/Verifier)都是**无状态函数**——纯函数式 + LangGraph state 中转。
+
 #### 1. ToolAgent
 ```python
 async def call_tools(query, intent, user_id, user_permissions) -> tuple[results, calls, errors, pending]
