@@ -17,47 +17,47 @@
                             │
         ┌──────────┬────────┼────────┬──────────┐
         │          │        │        │          │
-        ▼          ▼        ▼        ▼          ▼
-   ToolAgent  Knowledge CodeAgent  Verify   Retrieval
-   (6 工具)   (LLM生成) (AST注入)  (Claim)  (5 mode)
+▼          ▼        ▼        ▼          ▼
+    ToolAgent  Knowledge CodeAgent  Verify   Retrieval
+    (6 工具)   (LLM生成) (AST注入)  (Claim)  (3 mode)
 ```
 
 - **Agent 之间不直接通信**，全部通过 `AgentState` 黑板读写
 - 每个 Worker 执行完必须**回到 MasterAgent**，由 Master 决定下一跳
 - Worker 不感知其他 Worker 的存在，只看 State
 
-### 二、5 个 Agent 一览
+### 二、6 个 Agent 一览
 
 | # | Agent | 实现形式 | 入口 | 核心职责 | 不允许做的事 |
 |---|-------|---------|------|---------|------------|
 | 1 | `MasterAgent` | class | `MasterAgent.decide(state)` | 中央路由、LLM-first + 规则兜底 | 不生成最终答案 |
 | 2 | `ToolAgent` | async 函数 | `call_tools(query, intent, user_id, perms)` | 6 个 BaseTool 编排、tier 策略、权限检查 | 不绕过 PolicyEngine |
 | 3 | `KnowledgeAgent` | async 函数 | `generate_answer_async(query, docs)` | 基于 RAG 证据生成最终答案、CoT thinking | 不越权调工具 |
-| 4 | `CodeAgent` | 同步函数 | `generate_code(query, docs, language)` | AST 符号提取 + LLM/模板生成代码 | 不直接执行 |
-| 5 | `VerifierAgent` | async 函数 | `verify_answer_async(draft, citations, docs)` | Claim-level 断言校验 → LLM → 规则 | 不修改业务数据 |
+| 4 | `CodeGenerator` | 同步函数 | `generate_code(query, docs, language)` | AST 符号提取 + LLM/模板生成代码（prompt utility） | 不直接执行 |
+| 5 | `CodeExecutor` | async 函数 | `execute_code(code_snippet, language)` | 沙箱执行 CodeGenerator 生成的代码 | 不生成代码 |
+| 6 | `VerifierAgent` | async 函数 | `verify_answer_async(draft, citations, docs)` | Claim-level 断言校验 → LLM → 规则 | 不修改业务数据 |
 
-> 第 6 个文件 `agents/claim_verifier.py` 是 VerifierAgent 的内部子模块（细粒度声明级校验），不是独立 Agent。
-> 详见 `src/enterprise_agentic_rag/agents/__init__.py` 的 5 个统一导出。
+> `CodeAgent` 拆分为 CodeGenerator（prompt utility）和 CodeExecutor（agent）。
+> 详见 `src/enterprise_agentic_rag/agents/__init__.py` 的 6 个统一导出。
 
 ### 三、LangGraph 三要素：State / Node / Edge
 
-#### State（72 字段 TypedDict）
+#### State（~30 字段 TypedDict）
 
 `AgentState` 是全局黑板，按功能区划分：
 
 | 功能区 | 字段示例 | 数量 |
 |--------|---------|------|
 | 输入/身份 | `query`, `user_id`, `session_id`, `user_role`, `permissions` | 5 |
-| 路由/意图 | `intent`, `deep_intent`, `master_next`, `master_decisions`, `last_agent_step` | 8 |
-| 检索/RAG | `retrieved_docs`, `reranked_docs`, `retrieval_mode`, `graph_paths` | 8 |
-| 工具 | `tool_results`, `tool_errors`, `pending_tool_confirmations` | 8 |
-| 生成 | `draft_answer`, `code_snippet`, `final_answer`, `citations` | 6 |
+| 路由/意图 | `intent`, `deep_intent`, `master_next`, `master_decisions`, `last_agent_step` | 5 |
+| 检索/RAG | `retrieved_docs`, `reranked_docs`, `retrieval_mode`, `graph_paths` | 5 |
+| 工具 | `tool_results`, `tool_errors`, `pending_tool_confirmations` | 4 |
+| 生成 | `draft_answer`, `code_snippet`, `final_answer`, `citations` | 5 |
 | 校验 | `verified`, `verification_reason`, `need_human` | 3 |
-| 记忆 | `chat_history`, `session_summary`, `user_profile`, `memory_ckpt_id` | 5 |
-| 上下文 | `structured_context`, `context_window`, `token_budget` | 4 |
-| 恢复 | `retry_count`, `retry_history`, `recoverable`, `fallback_reason` | 5 |
-| 可观测 | `trace_id`, `node_events`, `tool_events`, `metrics_snapshot` | 5 |
-| 其他 | DeepIntent 结构化字段、checkpoint、evaluator | ~15 |
+| 记忆 | `chat_history`, `session_summary`, `user_profile`, `memory_ckpt_id` | 4 |
+| 上下文 | `structured_context`, `context_window`, `token_budget` | 3 |
+| 恢复 | `retry_count`, `retry_history`, `recoverable`, `fallback_reason` | 4 |
+| 可观测 | `trace_id`, `node_events`, `tool_events`, `metrics_snapshot` | 4 |
 
 **为什么用 TypedDict 而不是 Pydantic？**
 - LangGraph 原生兼容，reducer 机制支持增量更新
@@ -116,70 +116,58 @@ master_agent_node(state)
 
 10 个 `_VALID_NODES`：`call_tools` / `retrieve_knowledge` / `rewrite_query` / `build_context` / `generate_code` / `execute_code` / `generate_answer` / `verify_answer` / `finalize_answer` / `human_fallback`
 
-### 四.5、10 意图 → 5 模式 → 5 Agent 路径完整决策矩阵
+### 四.5、6 意图 → 3 模式 → 6 Agent 路径完整决策矩阵
 
-> **这是本项目最容易被误解的点**：10 IntentCategory（认知层） / 5 RetrievalMode（检索策略层） / 5 Agent 路径（执行层）是**三个正交维度**，不是 1-to-1-to-1 对应。
+> **这是本项目最容易被误解的点**：6 IntentCategory（认知层） / 3 RetrievalMode（检索策略层） / 6 Agent 路径（执行层）是**三个正交维度**，不是 1-to-1-to-1 对应。
 
 #### 1. 概念区分
 
 | 概念 | 数量 | 是什么 | 谁产出 |
 |------|------|--------|--------|
-| **IntentCategory** | 10 种 | "用户在问什么"（认知层） | Deep Intent（规则 + LLM） |
-| **RetrievalMode** | 5 种 | "用什么方式去查"（检索策略层） | `_suggest_mode()` 映射 |
-| **Agent 路径** | 5 条 | "执行什么动作"（执行层） | MasterAgent 路由 |
+| **IntentCategory** | 6 种 | "用户在问什么"（认知层） | Deep Intent（规则 + LLM） |
+| **RetrievalMode** | 3 种 | "用什么方式去查"（检索策略层） | `_suggest_mode()` 映射 |
+| **Agent 路径** | 6 条 | "执行什么动作"（执行层） | MasterAgent 路由 |
 
-#### 2. 10 意图 → 5 检索模式（源码 `rules.py:387-406`）
+#### 2. 6 意图 → 3 检索模式（源码 `rules.py`）
 
 ```python
 def _suggest_mode(result: RuleIntentResult) -> str:
     primary = result.candidate_intents[0] if result.candidate_intents else ""
-    if primary in ("error_diagnosis", "project_debug"):  return "error_first"
-    elif primary == "migration":                         return "graph_first"
-    elif primary == "compatibility":                     return "graph_first"
+    if primary == "error_diagnosis":                    return "graph_first"
+    elif primary in ("migration", "compatibility"):      return "graph_first"
     elif primary == "code_generation":                   return "parallel"
-    elif primary in ("concept_qa", "learning_guidance", "best_practice"):
-                                                        return "hybrid_only"
-    elif primary == "api_usage":                         return "parallel"
-    elif primary == "architecture":                      return "graph_first"
+    elif primary in ("concept_qa", "api_usage"):         return "hybrid_only"
     else:                                               return "hybrid_only"
 ```
 
 | IntentCategory | RetrievalMode | 映射理由 |
-|---|---|---|
+|---|---|
 | `concept_qa` | `hybrid_only` | 概念解释需要语义+关键词互补 |
-| `api_usage` | `parallel` | API 参数既要精确符号（关键词）又要示例（向量） |
+| `api_usage` | `hybrid_only` | API 参数既要精确符号（关键词）又要示例（向量） |
 | `code_generation` | `parallel` | 代码示例需要多路召回补齐 |
-| `error_diagnosis` | **`error_first`** | 错误码/异常优先，关键词触发工具 |
+| `error_diagnosis` | **`graph_first`** | 错误码/异常优先，关键词触发工具（图谱增强） |
 | `migration` | **`graph_first`** | 迁移链路强依赖实体关系（图谱） |
 | `compatibility` | **`graph_first`** | 版本/API Level 兼容靠图谱 1-2 hop |
-| `project_debug` | **`error_first`** | 项目排障 = 错误诊断 + 配置问题 |
-| `best_practice` | `hybrid_only` | 最佳实践是综合性知识 |
-| `architecture` | **`graph_first`** | 架构/调用链就是图谱场景 |
-| `learning_guidance` | `hybrid_only` | 学习路径偏综述 |
 
-> **10 意图 → 5 模式 = 多对一**：10 个意图只映射到 5 个不同 mode。
+> **6 意图 → 3 模式 = 多对一**：6 个意图只映射到 3 个不同 mode。
 
-#### 3. 5 RetrievalMode → 4 Workflow（都走 RAG）
+#### 3. 3 RetrievalMode → BaseRAGWorkflow（mode 参数）
 
 ```python
-# src/enterprise_agentic_rag/graph/nodes/retrieval.py:135-142 (v3.1 拆分后)
+# src/enterprise_agentic_rag/graph/nodes/retrieval.py
 async def retrieve_knowledge(state):
-    """Dispatch to intent-aware retrieval workflow."""
-    # graph_first → GraphFirstWorkflow
-    # error_first → ErrorFirstWorkflow
-    # code_first → CodeGenerationWorkflow
-    # hybrid_only / parallel / default → HybridRAGWorkflow
+    """Dispatch to BaseRAGWorkflow with mode parameter."""
+    mode = state.get("retrieval_mode", "hybrid_only")
+    workflow = BaseRAGWorkflow(mode=mode)  # hybrid_only / parallel / graph_first
 ```
 
-| RetrievalMode | 走的 Workflow | 召回策略 |
+| RetrievalMode | BaseRAGWorkflow mode | 召回策略 |
 |---|---|---|
-| `hybrid_only` | `HybridRAGWorkflow` | Milvus + ES 并行，权重 0.5/0.5 |
-| `parallel` | `HybridRAGWorkflow` | 同上，但可调权重（默认 0.5/0.5） |
-| `graph_first` | `GraphFirstWorkflow` | 向量 + ES + **Neo4j 1-2 hop 优先** |
-| `error_first` | `ErrorFirstWorkflow` | 错误码/异常关键词强触发，向量辅助 |
-| `code_first` | `CodeGenerationWorkflow` | 代码块抽取 + 向量 + ES |
+| `hybrid_only` | `hybrid_only` | Milvus + ES 并行，权重 0.5/0.5 |
+| `parallel` | `parallel` | 同上，但可调权重（默认 0.5/0.5） |
+| `graph_first` | `graph_first` | 向量 + ES + **Neo4j 1-2 hop 优先** |
 
-> **5 个 mode 都进入 `retrieve_knowledge` 节点，全部走 RAG**。区别只是"召回策略权重 + 是否走图谱"。
+> **3 个 mode 都进入 `retrieve_knowledge` 节点，全部走 RAG**。区别只是"召回策略权重 + 是否走图谱"。
 
 #### 4. 关键问题：什么时候走 Agent（不是 RAG）？
 
@@ -214,23 +202,19 @@ graph TB
     Q[用户 Query] --> DI[Deep Intent 识别]
     DI -->|primary_intent| IM{哪一类意图?}
 
-    IM -->|concept_qa / best_practice / learning_guidance| HM[hybrid_only]
-    IM -->|api_usage / code_generation| PM[parallel]
-    IM -->|migration / compatibility / architecture| GM[graph_first]
-    IM -->|error_diagnosis / project_debug| EM[error_first]
+    IM -->|concept_qa / api_usage| HM[hybrid_only]
+    IM -->|code_generation| PM[parallel]
+    IM -->|error_diagnosis / migration / compatibility| GM[graph_first]
 
-    HM --> HRW[HybridRAGWorkflow]
-    PM --> HRW
-    GM --> GFW[GraphFirstWorkflow]
-    EM --> EFW[ErrorFirstWorkflow]
+    HM --> BRW[BaseRAGWorkflow]
+    PM --> BRW
+    GM --> BRW
 
     DI --> MK{Master 路由判断}
     MK -->|_requires_tools=True| TA[ToolAgent 先走]
-    TA -->|拿工具结果| HRW
-    TA -->|拿工具结果| GFW
-    TA -->|拿工具结果| EFW
-    HRW & GFW & EFW -->|retrieved_docs| BC[build_context]
-    BC -->|code_generation 意图| GC[CodeAgent + execute_code]
+    TA -->|拿工具结果| BRW
+    BRW -->|retrieved_docs| BC[build_context]
+    BC -->|code_generation 意图| GC[CodeGenerator + CodeExecutor]
     BC -->|其他意图| GA[KnowledgeAgent]
     GC & GA --> V[VerifierAgent]
     V -->|verified| F[finalize]
@@ -243,8 +227,8 @@ graph TB
     classDef agent fill:#F3E5F5,stroke:#7B1FA2
     classDef term fill:#FFEBEE,stroke:#C62828
     class DI,IM,MK intent
-    class HM,PM,GM,EM mode
-    class HRW,GFW,EFW,BC rag
+    class HM,PM,GM mode
+    class BRW,BC rag
     class TA,GC,GA,V agent
     class F,HF term
 ```
@@ -270,7 +254,7 @@ graph TB
 
 > **真正的"Agent 自主性"集中在 3 个节点：Deep Intent / Master 路由 / Verifier 决策**。其他都是受控执行。
 
-**(3) 5 个 RetrievalMode 都走 RAG 的设计意图**
+**(3) 3 个 RetrievalMode 都走 RAG 的设计意图**
 
 不是"用 RAG 替代 Agent"，而是"用 RAG 兜底保障，用 Agent 增强体验"：
 - RAG 保证：哪怕 Agent 决策错误，至少能基于检索证据给出可信答案
@@ -278,8 +262,8 @@ graph TB
 
 **(4) 面试反例澄清**
 
-❌ **错误理解**："项目有 5 个 Agent 模式"——只有 5 个 **RetrievalMode**，不是 5 个 Agent 模式
-✅ **正确理解**：项目有 **5 个 Agent**（Master/Tool/Knowledge/Code/Verifier）+ **5 个 RetrievalMode**（hybrid_only/parallel/graph_first/error_first/code_first），两者解耦
+❌ **错误理解**："项目有 6 个 Agent 模式"——只有 3 个 **RetrievalMode**，不是 6 个 Agent 模式
+✅ **正确理解**：项目有 **6 个 Agent**（Master/Tool/Knowledge/CodeGenerator/CodeExecutor/Verifier）+ **3 个 RetrievalMode**（hybrid_only/parallel/graph_first），两者解耦
 
 ### 五、Worker Agent 详细职责
 
@@ -303,7 +287,7 @@ async def generate_answer_async(query, retrieved_docs) -> tuple[answer, citation
 - **CoT thinking**（可选）：先输出简短分析轨迹，再生成答案
 - **输出**：`draft_answer` + `citations` + `thinking_trace`
 
-#### 3. CodeAgent
+#### 3. CodeGenerator
 ```python
 def generate_code(query, retrieved_docs, language) -> dict
 ```
@@ -311,7 +295,15 @@ def generate_code(query, retrieved_docs, language) -> dict
 - **语言检测**：python/typescript/javascript/bash（默认 typescript）
 - **LLM-first**：拼 Prompt（含符号表 + 文档片段），生成 ≤ 80 行代码
 - **模板兜底**：`_make_template_snippet` 提供占位符代码（标 `success=False`）
-- **不执行**：只生成，由 `execute_code` 节点用 `CodeExecutionTool` 沙箱执行
+- **不执行**：只生成代码片段
+
+#### 3b. CodeExecutor
+```python
+async def execute_code(code_snippet, language) -> dict
+```
+- **沙箱执行**：接收 CodeGenerator 生成的代码片段，用 CodeExecutionTool 沙箱执行
+- **结果收集**：stdout/stderr/exit_code 写入 `tool_results`
+- **不生成代码**：只执行已生成的 snippet
 
 #### 4. VerifierAgent
 ```python
@@ -382,12 +374,12 @@ async def workflow_turn(state):
 - **情节记忆 (Episodic)**：用户过去问过什么、做过什么、得到过什么结果
 - **语义记忆 (Semantic)**：稳定偏好、角色背景、业务规则
 
-### 十、稳定性机制（4 道闸门）
+### 十、稳定性机制（3 道闸门）
 
 1. **权限与工具策略**：`ToolExecutor` 执行前 schema 校验 + 权限检查 + 危险操作拦截（`create_ticket` 走 `sensitive` tier 需用户确认）
 2. **RecoveryManager**：根据失败节点、错误类型、重试次数决定 `retry` / `regenerate` / `fallback` / `human_handoff`
 3. **可观测**：`Tracer` 记录节点事件 → JSONL → Prometheus → Grafana（监控延迟、失败率、检索质量、验证失败率）
-4. **评估闭环**：`Agent Decision Eval` 用 22 条固定测试集评估 intent accuracy / routing accuracy / retrieval mode accuracy，CI gate 阻断回归
+4. **评估闭环**：`Agent Decision Eval` 用 8 条固定测试集评估 intent accuracy / routing accuracy / retrieval mode accuracy，CI gate 阻断回归
 
 ### 十一、面试话术（收束句）
 
@@ -420,19 +412,19 @@ async def workflow_turn(state):
 **追问 ②：MasterAgent 路由错了怎么办？**
 - 路由错了 → 下游节点会通过 `last_agent_step` + 字段缺失被发现
 - 例如路由到 `generate_answer` 但 `retrieved_docs` 为空 → generate_answer 走模板兜底 + Verifier 标"无证据" → 触发 retry
-- `Agent Decision Eval` 22 条用例评估 routing accuracy，CI gate 阻断回归
+- `Agent Decision Eval` 8 条用例评估 routing accuracy，CI gate 阻断回归
 
-**追问 ③：5 个 Agent 怎么扩展？**
+**追问 ③：6 个 Agent 怎么扩展？**
 新增一个 Worker 只需 3 步：
 1. `AgentState` 加字段（Worker 的输入输出）
 2. `MasterAgent._rule_decide` 加分支 + `_VALID_NODES` 加新值
-3. Workflow 加 `add_node` + `add_edge`
+3. BaseRAGWorkflow 加 `add_node` + `add_edge`
 
-不需要改其他 Worker 的代码。已有项目示例：加 CodeAgent 时只动了这 3 处，其他 Agent 无感知。
+不需要改其他 Worker 的代码。已有项目示例：加 CodeExecutor 时只动了这 3 处，其他 Agent 无感知。
 
 **追问 ④：ReAct vs 本项目架构？**
 - ReAct：单 Agent 内 Thought → Action → Observation 循环，自由度高
-- 本项目：5 个 Agent 分工明确，主流程固定，仅 Deep Intent / Tool / Verifier 内部有受控 ReAct 痕迹
+- 本项目：6 个 Agent 分工明确，主流程固定，仅 Deep Intent / Tool / Verifier 内部有受控 ReAct 痕迹
 - 选择理由：企业场景对稳定性、可解释性要求 > 自由度，ReAct 容易陷入无效循环
 - 详见 `RAG 检索引擎与 GraphRAG` 文档关于 Agent 范式的对比
 
@@ -442,10 +434,20 @@ async def workflow_turn(state):
 - 新增字段 = 改契约，影响面可视化（grep 找引用方）
 - 这比"两个 Agent 用自然语言约定协议"稳定得多
 
+---
+### v3.2 简化说明
+
+**主要变更**：
+- 4 个独立 Workflow 类 → 1 个 BaseRAGWorkflow（通过 mode 参数区分模式）
+- 5-tier 降级链 → 3-tier（语义缓存命中 → BaseRAGWorkflow → 失败返回空证据）
+- 检索层现在由 RetrievalAgent 代理（agents/retrieval_agent.py），但内部仍是确定性检索逻辑
+- IntentCategory 10 → 6；RetrievalMode 5 → 3；AgentState 72 → ~30；eval cases 22 → 8
+- CodeAgent 拆分为 CodeGenerator（prompt utility）+ CodeExecutor（agent）
+
 
 ### 流程图
 
-#### 1. 5 Agent Hub-and-Spoke 拓扑
+#### 1. 6 Agent Hub-and-Spoke 拓扑
 
 ```mermaid
 graph TB
@@ -458,19 +460,21 @@ graph TB
 
     MA -.LLM 路由.-> TA
     MA -.LLM 路由.-> KA
-    MA -.LLM 路由.-> CA
+    MA -.LLM 路由.-> CG
+    MA -.LLM 路由.-> CE
     MA -.LLM 路由.-> VA
     MA -.LLM 路由.-> RS
 
-    subgraph Workers[4 Worker + Retrieval Service]
+    subgraph Workers[5 Worker + Retrieval Service]
         TA[📞 ToolAgent<br/>call_tools<br/>6 BaseTool · 3 tier]
         KA[💬 KnowledgeAgent<br/>generate_answer_async<br/>LLM + 模板]
-        CA[⌨️ CodeAgent<br/>generate_code<br/>AST 注入]
+        CG[⌨️ CodeGenerator<br/>generate_code<br/>AST 注入]
+        CE[⚡ CodeExecutor<br/>execute_code<br/>沙箱执行]
         VA[✅ VerifierAgent<br/>verify_answer_async<br/>Claim-level]
-        RS[🔍 Retrieval Service<br/>5 mode · 4 workflow]
+        RS[🔍 Retrieval Service<br/>3 mode · BaseRAGWorkflow]
     end
 
-    TA & RS & KA & CA & VA -->|写回 last_agent_step| MA
+    TA & RS & KA & CG & CE & VA -->|写回 last_agent_step| MA
 
     VA -->|verified=true| FA[finalize_answer]
     VA -->|verified=false + retry| BC[build_context 重生成]
@@ -486,7 +490,7 @@ graph TB
     classDef term fill:#FFEBEE,stroke:#C62828
     class LM,CP,DI,USER entry
     class MA master
-    class TA,KA,CA,VA,RS worker
+    class TA,KA,CG,CE,VA,RS worker
     class FA,HF,SM,END,FR term
 ```
 
@@ -525,7 +529,7 @@ graph TB
 
 ```mermaid
 graph LR
-    subgraph State[AgentState 72 字段黑板]
+    subgraph State[AgentState ~30 字段黑板]
         S1[query · intent · deep_intent]
         S2[retrieved_docs · tool_results]
         S3[draft_answer · code_snippet]

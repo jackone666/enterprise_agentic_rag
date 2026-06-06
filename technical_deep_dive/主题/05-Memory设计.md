@@ -316,6 +316,16 @@ final_score = relevance_score * 0.5
 - PG: 100 万用户 ≈ 10GB
 - 需定期清理 + 归档到冷存储
 
+---
+### v3.2 简化说明
+
+**主要变更**：
+- 4 个独立 Workflow 类 → 1 个 BaseRAGWorkflow（通过 mode 参数区分模式）
+- 5-tier 降级链 → 3-tier（语义缓存命中 → BaseRAGWorkflow → 失败返回空证据）
+- 检索层现在由 RetrievalAgent 代理（agents/retrieval_agent.py），但内部仍是确定性检索逻辑
+- IntentCategory 10 → 6；RetrievalMode 5 → 3；AgentState 72 → ~30；eval cases 22 → 8
+- CodeAgent 拆分为 CodeGenerator（prompt utility）+ CodeExecutor（agent）
+
 ## 匹配到的题目（16 道）
 
 ### 1. Long Context 模型（如 Gemini 1.5 的 1M token）在实际使用中效果怎么样？ [来源:01_RAG核心链路.md | 重要性:A]

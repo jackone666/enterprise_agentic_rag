@@ -39,10 +39,10 @@ Deep Intent → Retrieval Mode 的映射：
 
 | primary_intent | retrieval_plan.mode | 走哪个 workflow |
 |---|---|---|
-| `code_generation` | `code_first` | `CodeGenerationWorkflow` |
-| `error_diagnosis` / `project_debug` | `error_first` | `ErrorFirstWorkflow` |
-| `migration` / `compatibility` / `architecture` | `graph_first` | `GraphFirstWorkflow` |
-| `concept_qa` / `api_usage` / `best_practice` | `hybrid_only` / `parallel` | `HybridRAGWorkflow` |
+| `code_generation` | `code_first` | `BaseRAGWorkflow(mode=code_first)` |
+| `error_diagnosis` / `project_debug` | `error_first` | `BaseRAGWorkflow(mode=error_first)` |
+| `migration` / `compatibility` / `architecture` | `graph_first` | `BaseRAGWorkflow(mode=graph_first)` |
+| `concept_qa` / `api_usage` / `best_practice` | `hybrid_only` / `parallel` | `BaseRAGWorkflow(mode=hybrid_only)` |
 
 ### 三、第二步：混合召回（多路并行）
 
@@ -206,10 +206,10 @@ Chunk size、embedding 模型、索引字段变化属于离线质量；意图路
 ```mermaid
 graph TB
     Q[用户 Query] --> DI[Deep Intent<br/>识别 intent + entities<br/>产出 retrieval_plan]
-    DI -->|mode=hybrid_only| HRW[HybridRAGWorkflow]
-    DI -->|mode=graph_first| GFW[GraphFirstWorkflow]
-    DI -->|mode=error_first| EFW[ErrorFirstWorkflow]
-    DI -->|mode=code_first| CGW[CodeGenerationWorkflow]
+    DI -->|mode=hybrid_only| HRW[BaseRAGWorkflow<br/>hybrid_only]
+    DI -->|mode=graph_first| GFW[BaseRAGWorkflow<br/>graph_first]
+    DI -->|mode=error_first| EFW[BaseRAGWorkflow<br/>error_first]
+    DI -->|mode=code_first| CGW[BaseRAGWorkflow<br/>code_first]
 
     HRW --> M[Milvus 向量]
     HRW --> E[ES + IK 关键词]
@@ -246,15 +246,15 @@ graph TB
     class F,R,HF fb
 ```
 
-#### 2. 4 个 Workflow 分派矩阵
+#### 2. BaseRAGWorkflow 分派矩阵
 
 ```mermaid
 graph LR
     subgraph mode选择["retrieval_plan.mode 决定走哪个 workflow"]
-        CI[code_first] --> CGW[CodeGenerationWorkflow]
-        EI[error_first] --> EFW[ErrorFirstWorkflow]
-        GI[graph_first] --> GFW[GraphFirstWorkflow]
-        HI[hybrid_only/parallel] --> HRW[HybridRAGWorkflow]
+        CI[code_first] --> CGW[BaseRAGWorkflow<br/>code_first]
+        EI[error_first] --> EFW[BaseRAGWorkflow<br/>error_first]
+        GI[graph_first] --> GFW[BaseRAGWorkflow<br/>graph_first]
+        HI[hybrid_only/parallel] --> HRW[BaseRAGWorkflow<br/>hybrid_only]
     end
 
     subgraph 内部召回["各 workflow 的召回策略"]
@@ -3191,5 +3191,15 @@ GPU显存分配（以24GB A10部署Qwen2.5-7B为例）：
 ---
 
 ---
+
+---
+### v3.2 简化说明
+
+**主要变更**：
+- 4 个独立 Workflow 类 → 1 个 BaseRAGWorkflow（通过 mode 参数区分模式）
+- 5-tier 降级链 → 3-tier（语义缓存命中 → BaseRAGWorkflow → 失败返回空证据）
+- 检索层现在由 RetrievalAgent 代理（agents/retrieval_agent.py），但内部仍是确定性检索逻辑
+- IntentCategory 10 → 6；RetrievalMode 5 → 3；AgentState 72 → ~30；eval cases 22 → 8
+- CodeAgent 拆分为 CodeGenerator（prompt utility）+ CodeExecutor（agent）
 
 [返回主题索引](README.md) | [返回总目录](../../TECHNICAL_DEEP_DIVE.md)

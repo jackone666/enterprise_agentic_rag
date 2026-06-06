@@ -137,7 +137,7 @@ class CitationManager:
 | `router_prompt` | MasterAgent 路由 | master_agent_node |
 | `knowledge_prompt` | KnowledgeAgent 生成 | generate_answer |
 | `verifier_prompt` | VerifierAgent 校验 | verify_answer |
-| `code_prompt` | CodeAgent 生成 | generate_code |
+| `code_prompt` | CodeGenerator 生成 | generate_code |
 
 **每个角色 Prompt 独立**，`PromptBuilder` 动态拼装。
 
@@ -204,6 +204,16 @@ class CitationManager:
 - **没有**完整复用（每次请求独立）
 - 部分复用：query rewrite 缓存 + retrieved_docs 缓存
 - 完全复用：语义缓存（`rag/semantic_cache.py`，仅 verified=true）
+
+---
+### v3.2 简化说明
+
+**主要变更**：
+- 4 个独立 Workflow 类 → 1 个 BaseRAGWorkflow（通过 mode 参数区分模式）
+- 5-tier 降级链 → 3-tier（语义缓存命中 → BaseRAGWorkflow → 失败返回空证据）
+- 检索层现在由 RetrievalAgent 代理（agents/retrieval_agent.py），但内部仍是确定性检索逻辑
+- IntentCategory 10 → 6；RetrievalMode 5 → 3；AgentState 72 → ~30；eval cases 22 → 8
+- CodeAgent 拆分为 CodeGenerator（prompt utility）+ CodeExecutor（agent）
 
 
 ### 流程图
