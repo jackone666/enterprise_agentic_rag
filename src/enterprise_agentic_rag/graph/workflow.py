@@ -27,5 +27,18 @@ from __future__ import annotations
 # Public surface — kept stable so app/main.py and tests/ can keep doing
 # `from enterprise_agentic_rag.graph.workflow import build_workflow`
 from enterprise_agentic_rag.graph.builder import after_master, after_permission, build_workflow
+from enterprise_agentic_rag.graph.dependencies import tracer as _tracer
 
 __all__ = ["build_workflow", "after_master", "after_permission"]
+
+
+def __getattr__(name: str):
+    """Module-level attribute proxy.
+
+    Exists so that legacy code/tests that monkey-patch ``graph.workflow._tracer``
+    (e.g. tests/test_observability.py) keep working — the patch flows through
+    to ``graph.dependencies.tracer`` via this proxy.
+    """
+    if name == "_tracer":
+        return _tracer
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

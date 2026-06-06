@@ -6,7 +6,7 @@ Covers: FallbackPolicy, RetryPolicy, RecoveryManager,
 
 import pytest
 
-from enterprise_agentic_rag.graph.workflow import _after_permission, build_workflow
+from enterprise_agentic_rag.graph.workflow import after_permission, build_workflow
 from enterprise_agentic_rag.recovery.fallback_policy import (
     FALLBACK_ACTION_MAP,
     FALLBACK_ESCALATION,
@@ -394,12 +394,11 @@ class TestWorkflowRecovery:
 
     def test_final_refusal_routing_directly(self) -> None:
         """Test the permission routing function directly."""
-        # The _after_permission function routes to final_refusal when
-        # knowledge_search is not in permissions
-        result = _after_permission({"permissions": ["read"]})  # type: ignore[arg-type]
+        # The after_permission function routes to final_refusal when
+        result = after_permission({"permissions": ["read"]})  # type: ignore[arg-type]
         assert result == "final_refusal"
 
-        result2 = _after_permission({"permissions": ["read", "knowledge_search"]})  # type: ignore[arg-type]
+        result2 = after_permission({"permissions": ["read", "knowledge_search"]})  # type: ignore[arg-type]
         assert result2 == "deep_intent_recognition"
 
     @pytest.mark.asyncio
