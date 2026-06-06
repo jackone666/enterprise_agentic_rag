@@ -290,7 +290,7 @@ TRIGGER_SIGNALS = {
 
 > **10 意图 → 5 模式 = 多对一**（10 个里只有 5 个不同值）。
 
-**5 模式 → 4 Workflow**（`workflow.py:135-142` 全部走 RAG）：
+**5 模式 → 4 Workflow**（`graph/nodes/retrieval.py:135-142` 全部走 RAG；v3.1 拆分后位置）：
 
 | RetrievalMode | Workflow | 召回策略 |
 |---|---|---|
@@ -415,7 +415,7 @@ if all(d.get("score", 0) < 0.1 for d in docs):
 | `max_score / avg_score < 1.1` | 候选同质化 | 缺乏明显最优文档 |
 | `all(doc.score < 0.1)` | 全部低分 | 触发 low_retrieval_score |
 
-##### C. 路由步数预算（`config/settings.py:147`, `workflow.py:102-110`）
+##### C. 路由步数预算（`config/settings.py:147`, `graph/nodes/master.py:102-110`）
 
 ```python
 # 默认 18 步

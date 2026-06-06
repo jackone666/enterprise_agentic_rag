@@ -59,10 +59,13 @@ tier 是"用户介入程度"，**不是风险等级**。
 
 Eval Gate 是**门禁级**（关键 case），**全量评估**在 nightly/weekly 跑。
 
-### 认知 10：项目目录结构反映了 P0 修复
+### 认知 10：项目目录结构反映了 v3.0 / v3.1 P0 修复
 
 - `agents/deep_intent/`（不是 `agent/deep_intent/`）
-- `retrieval/` 下不再有 `retrieval_router.py` 和 `__init__.py`（已下线）
+- v3.0：`retrieval/` 下不再有 `retrieval_router.py` 和 `__init__.py`（已下线）
+- **v3.1**：`retrieval/` 包**整体并入 `rag/`** —— `keyword_search_tool.py` / `vector_search_tool.py` / `graph_search_tool.py` / `merger.py` / `reranker_wrapper.py` / `evidence_selector.py` / `unified_schemas.py` 全部移到 `rag/`，`retrieval/` 目录已删除
+- **v3.1**：`graph/workflow.py` 从 **1080 行**拆为 `graph/workflow.py`（~30 行 re-export 入口）+ `graph/builder.py`（图结构）+ `graph/nodes/`（16 个节点按职责拆分：`memory.py` / `permission.py` / `intent.py` / `master.py` / `retrieval.py` / `tools.py` / `context.py` / `generation.py` / `code.py` / `verify.py` / `finalize.py`）+ `graph/cache.py` + `graph/persistence.py` + `graph/dependencies.py`
+- **v3.1**：`MasterAgent` / `MasterDecision` / `AgentState` 新增 `routing_path` 字段（`"llm"` / `"rule"` / `"rule_direct"`），可观测 LLM 路由器实际跑了多少次
 - `last_worker` 字段值：`context_manager` / `knowledge_agent` / `code_agent`（不是 `answer_agent`）
 
 ---
@@ -84,10 +87,10 @@ Eval Gate 是**门禁级**（关键 case），**全量评估**在 nightly/weekly
 | 文档 | 用途 |
 |------|------|
 | `technical_deep_dive/01-项目总览与系统架构.md` | 5 层架构、组件矩阵 |
-| `technical_deep_dive/03-Agent-体系与进阶设计.md` | 5 Agent + 决策矩阵 + 置信度公式 |
-| `technical_deep_dive/04-RAG-检索引擎与GraphRAG.md` | 检索链路 + 知识库更新 |
+| `technical_deep_dive/02-LangGraph-工作流编排.md` | 16 节点图结构（v3.1 拆分后位置） |
+| `technical_deep_dive/03-Agent-体系与进阶设计.md` | 5 Agent + 决策矩阵 + 置信度公式 + `routing_path` 字段 |
+| `technical_deep_dive/04-RAG-检索引擎与GraphRAG.md` | 检索链路 + 知识库更新（v3.1 删 `retrieval/` 包装层） |
 | `technical_deep_dive/主题/` | 12 个主题题库（按面试主题复习）|
-| `technical_deep_dive/CODE_DOC_MAPPING.md` | 文档-代码双向映射表 |
 | `.claude/skills/doc-code-sync/SKILL.md` | 双向同步 skill |
 | `.claude/CLAUDE.md` | 项目级 Claude Code 配置 |
 
@@ -737,25 +740,41 @@ enterprise_agentic_rag/
 │   │   ├── semantic_cache.py          # 🆕 语义缓存
 │   │   ├── graph_rag_orchestrator.py  # GraphRAG 编排
 │   │   ├── fusion.py                  # 多路 RRF 融合
-│   │   ├── retrieval_router.py        # 动态路由
+│   │   ├── retrieval_router.py        # 动态路由（v3.0 已下线，被 workflow 替换）
 │   │   ├── graph/                     # 知识图谱（实体/关系/索引/检索）
 │   │   ├── external/                  # 外部知识源检索
-│   │   └── observability/             # 检索链路追踪
-│   ├── retrieval/         # 🆕 统一检索工具层
-│   │   ├── keyword_retriever.py
-│   │   ├── vector_retriever.py
-│   │   ├── graph_retriever.py
-│   │   ├── merger.py                  # RRF 融合
-│   │   ├── reranker.py                # Cross-Encoder 优先
-│   │   └── evidence_selector.py       # 证据选择
-│   ├── workflows/         # 🆕 意图感知检索工作流
+│   │   ├── observability/             # 检索链路追踪
+│   │   ├── keyword_search_tool.py     # 🆕 v3.1 合并 retrieval/ 进来
+│   │   ├── vector_search_tool.py      # 🆕 v3.1 合并
+│   │   ├── graph_search_tool.py       # 🆕 v3.1 合并
+│   │   ├── merger.py                  # RRF 融合（v3.1 合并）
+│   │   ├── reranker_wrapper.py        # Cross-Encoder 优先（v3.1 合并）
+│   │   ├── evidence_selector.py       # 证据选择（v3.1 合并）
+│   │   └── unified_schemas.py         # 🆕 v3.1 工具 I/O 契约
+│   ├── workflows/         # 意图感知检索工作流（v3.1 仍在，调用 rag/ 内的工具）
 │   │   ├── hybrid_rag_workflow.py
 │   │   ├── graph_first_workflow.py
 │   │   ├── error_first_workflow.py
 │   │   └── code_generation_workflow.py
-│   ├── graph/             # LangGraph 工作流
-│   │   ├── state.py                 # AgentState（72 字段）
-│   │   └── workflow.py              # 16节点工作流
+│   ├── graph/             # LangGraph 工作流（v3.1 拆分）
+│   │   ├── state.py                 # AgentState（72 字段 + v3.1 新增 routing_path）
+│   │   ├── workflow.py              # ~30 行 re-export 入口
+│   │   ├── builder.py               # 🆕 v3.1 图结构（节点 + 边）
+│   │   ├── dependencies.py          # 🆕 v3.1 共享单例
+│   │   ├── cache.py                 # 🆕 v3.1 缓存键 namespace
+│   │   ├── persistence.py           # 🆕 v3.1 QA log 持久化
+│   │   └── nodes/                   # 🆕 v3.1 16 节点按职责拆分
+│   │       ├── memory.py            # load_memory / save_memory
+│   │       ├── permission.py        # check_permission / final_refusal
+│   │       ├── intent.py            # deep_intent_recognition
+│   │       ├── master.py            # master_agent（带 routing_path）
+│   │       ├── retrieval.py         # retrieve_knowledge / rewrite_query
+│   │       ├── tools.py             # call_tools
+│   │       ├── context.py           # build_context
+│   │       ├── generation.py        # generate_answer + CoT
+│   │       ├── code.py              # generate_code / execute_code
+│   │       ├── verify.py            # verify_answer
+│   │       └── finalize.py          # finalize_answer / human_fallback
 │   ├── memory/            # 多层级记忆
 │   │   ├── memory_manager.py        # 统一入口
 │   │   ├── short_term_memory.py     # 短期记忆

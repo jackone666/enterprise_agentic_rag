@@ -613,7 +613,7 @@ RRF(d) = Σ w_s / (k + rank_s(d))
 
 **面试说明：** 先讲初召回追求覆盖，重排追求精准；本项目用 RRF 融合多路结果，再用 Cross-Encoder 精排。
 
-**本项目答案（v3.0 更新，评分 9/10）：** 项目已集成 Cross-Encoder Reranker（qwen3-reranker-0.6b-q8_0 via Ollama），替换了原有的纯 RRF 轻量排序。升级为三级重排序链：Cross-Encoder(qwen3) → API Reranker → 规则(关键词+来源多样性)。实施文件：`rag/cross_encoder_reranker.py` + `retrieval/reranker.py`（异步安全）+ `rag/reranker.py`（同步兜底）。
+**本项目答案（v3.1 更新，评分 9/10）：** 项目已集成 Cross-Encoder Reranker（qwen3-reranker-0.6b-q8_0 via Ollama），替换了原有的纯 RRF 轻量排序。升级为三级重排序链：Cross-Encoder(qwen3) → API Reranker → 规则(关键词+来源多样性)。实施文件：`rag/cross_encoder_reranker.py`（异步优先）+ `rag/reranker_wrapper.py`（v3.1 整合原 `retrieval/reranker.py` + `rag/reranker.py`，意图感知 boost + 多样性约束）+ `rag/reranker.py`（同步 Reranker 兜底）。
 
 **满分答案（不涉及项目）：** Rerank 的必要性判断：① 如果 RRF 融合后 Top-5 中正确文档的 MRR > 0.8（即正确答案大部分在 Top-2），则 Rerank 收益有限；② 如果正确答案散布在 Top-5~20 中，则 Cross-Encoder Rerank 可显著提升 Top-5 精度（通常 MRR 提升 10-20%）。选型建议：bge-reranker-v2-m3（中文效果好、本地部署）、Cohere Rerank（多语言 SOTA、API 调用）、ColBERT（token 级交互精度最高但延迟大）。
 
@@ -1489,7 +1489,9 @@ graph_score = entity_match_score × 0.4   # 实体匹配覆盖度
 
 **5. Retrieval Router** (`rag/retrieval_router.py` + `workflows/` 目录)
 
-> **v3.0 更新：** 检索路由已从纯规则引擎升级为 **Deep Intent 驱动的意图感知工作流分派**。原有的 9 条规则逻辑保留在 `DynamicWeights` 中作为回退，主要检索路径已切换到 4 个专业工作流。
+> **v3.1 更新（重要）：** v3.0 时期曾短暂存在的 `retrieval/` 包装层（thin wrapper over `rag/`）已**整体并入 `rag/`**。原 `retrieval/{keyword,vector,graph}_retriever.py` → `rag/{keyword,vector,graph}_search_tool.py`；`retrieval/{merger,reranker,evidence_selector}.py` → `rag/{merger,reranker_wrapper,evidence_selector}.py`；共享的 `UnifiedToolInput/Output` 抽到 `rag/unified_schemas.py`。`retrieval/` 目录已删除。**修复动机**：`retrieval/*` 内部仍懒加载 `rag.retriever.KeywordRetriever`、`retrieval/merger.py` 顶层 import `rag.retrieval_router.DynamicWeights`、`retrieval/reranker.py` 兜底又调 `rag.reranker.Reranker` —— 跨包循环依赖、修复 bug 必须改两处。
+>
+> `DynamicWeights` 与 9 条规则**继续保留在 `rag/retrieval_router.py`**（不是冗余），是 `Merger` / `GraphRAG Orchestrator` 计算权重的真实依赖。
 
 **检索模式分派（当前架构）：**
 
@@ -1501,13 +1503,11 @@ Deep Intent (10种意图) → RetrievalPlanConfig (5种模式)
   └── code_first → CodeGenerationWorkflow (示例→API参考→官方文档→融合)
 ```
 
-**5 层回退链（在 `graph/workflow.py` 的 `retrieve_knowledge` 节点中）：**
+**5 层回退链（在 `graph/nodes/retrieval.py` 的 `retrieve_knowledge` 节点中）：**
 
 ```
 语义缓存 → 意图感知工作流 → GraphRAG Orchestrator → 旧版 Retriever → 外部搜索
 ```
-
-原有的 9 条规则（Rule 1-9）和 `DynamicWeights` 仍保留在 `rag/retrieval_router.py` 中，作为 GraphRAG Orchestrator 回退层的权重计算逻辑使用。
 
 ```python
         r"有关|涉及|联系|相连|连接|触发|回调|监听|订阅|通知"
@@ -1865,7 +1865,9 @@ tests/
 3. **Deep Intent 驱动**：意图识别（10种意图）+ 实体提取 + 置信度共同决定检索策略，比单纯的关键词正则匹配更精准
 4. **语义缓存加速**：P1 实施后，规则路由仍有 O(1) 的低延迟优势；同时在它之前加了语义缓存层，热门问题直接命中，整个检索阶段延迟为 0
 
-**为什么保留了原有的规则引擎？** `DynamicWeights` 和 9 条规则仍保留在 `rag/retrieval_router.py` 中，作为 GraphRAG Orchestrator 回退层的权重计算逻辑。当新建的工作流不可用时，系统自动回退到原有路由逻辑。这是一个**渐进式升级**的设计。
+**为什么保留了原有的规则引擎？** `DynamicWeights` 和 9 条规则仍保留在 `rag/retrieval_router.py` 中，作为 `Merger`（v3.1 新增在 `rag/merger.py`）和 `GraphRAG Orchestrator` 回退层的权重计算逻辑。当新建的工作流不可用时，系统自动回退到原有路由逻辑。这是一个**渐进式升级**的设计。
+
+> **v3.1 注**：v3.0 文档曾把 `retrieval/` 包装层描述为"渐进式升级"的中间状态。v3.1 表明该中间层是技术债而非设计选择，已合并到 `rag/`。
 
 **为什么不直接用 LLM 路由？** 已经在用——Deep Intent 的 LLM Classifier 做意图分类，其结果（primary_intent + retrieval_mode）直接驱动工作流分派。整体架构是 **LLM 分类（Deep Intent）→ 确定性分派（workflow dispatcher）**，兼顾了 LLM 的理解能力和规则系统的稳定性。
 

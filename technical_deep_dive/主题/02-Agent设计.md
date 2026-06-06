@@ -162,7 +162,7 @@ def _suggest_mode(result: RuleIntentResult) -> str:
 #### 3. 5 RetrievalMode → 4 Workflow（都走 RAG）
 
 ```python
-# src/enterprise_agentic_rag/graph/workflow.py:135-142
+# src/enterprise_agentic_rag/graph/nodes/retrieval.py:135-142 (v3.1 拆分后)
 async def retrieve_knowledge(state):
     """Dispatch to intent-aware retrieval workflow."""
     # graph_first → GraphFirstWorkflow

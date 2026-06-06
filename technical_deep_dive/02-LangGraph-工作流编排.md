@@ -76,13 +76,13 @@ master_agent 节点
 ### 易误会点 8：build_workflow() 编译一次
 
 ```python
-# graph/workflow.py
+# graph/builder.py (v3.1 拆分后;原 graph/workflow.py 现为 ~30 行 re-export 入口)
 def build_workflow() -> CompiledGraph:
-    workflow = StateGraph(AgentState)
-    # 16 个 add_node
+    builder = StateGraph(AgentState)
+    # 16 个 add_node（节点实现分布在 graph/nodes/*.py）
     # 2 个 add_conditional_edges
     # N 个 add_edge
-    return workflow.compile()
+    return builder.compile()
 ```
 
 **编译一次，全局复用**。每次请求通过 `workflow.invoke(state)` 进入。**不是每次请求重新编译**。
@@ -369,7 +369,7 @@ def build_workflow() -> StateGraph:
     # 每个节点都用 tracer.traced_node() 包装，自动记录执行追踪
     builder.add_node("load_memory",       _tracer.traced_node("load_memory", load_memory))
     builder.add_node("check_permission",  _tracer.traced_node("check_permission", check_permission))
-    # ... 共 16 个节点（详见 graph/workflow.py:1007-1023）
+    # ... 共 16 个节点（详见 graph/builder.py;v3.1 拆分后节点实现位于 graph/nodes/*.py）
 
     # 定义边和条件边
     builder.add_edge(START, "load_memory")
