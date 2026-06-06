@@ -1,8 +1,8 @@
-"""Code agent — generates code snippets from retrieved documentation.
+"""Code prompt factory — generates code from retrieved documentation.
 
-LLM-first generation with template fallback.
-Augments generation with AST-level symbol extraction from retrieved docs
-to improve API usage accuracy.
+This module is the pure prompt factory for code generation.
+AST symbol extraction helpers are re-exported from
+enterprise_agentic_rag.rag.graph.code_symbol_extractor.
 """
 
 from __future__ import annotations
@@ -33,6 +33,11 @@ def generate_code(
         Dict with code generation result.
     """
     from enterprise_agentic_rag.llm.provider_factory import get_llm_provider
+    from enterprise_agentic_rag.rag.graph.code_symbol_extractor import (
+        extract_code_blocks,
+        extract_symbols_from_code,
+    )
+
     provider = get_llm_provider()
 
     if not language:
@@ -42,7 +47,9 @@ def generate_code(
     symbols_info = None
     if retrieved_docs:
         try:
-            symbols_info = _extract_symbols_from_docs(retrieved_docs, language)
+            symbols_info = _extract_symbols_from_docs(
+                retrieved_docs, language, extract_code_blocks, extract_symbols_from_code
+            )
         except Exception:
             pass  # Symbol extraction is non-critical — silent fallback
 
@@ -143,7 +150,7 @@ def _make_template_snippet(query: str, language: str) -> str:
             "def example_usage():\n"
             "    # TODO: 根据文档补充具体调用逻辑\n"
             "    result = api_client.method(params)\n"
-            "    print(f'Result: {result}')\n"
+            " print(f'Result: {result}')\n"
         ),
         "javascript": (
             f"// 关于: {query[:60]}\n"
@@ -224,36 +231,43 @@ def _generate_with_llm(
 
 
 # ===========================================================================
-# Symbol extraction helpers
+# Symbol extraction helpers — re-exported from code_symbol_extractor
 # ===========================================================================
 
 
 def _extract_symbols_from_docs(
     retrieved_docs: list[dict[str, Any]],
     target_language: str = "typescript",
+    extract_code_blocks=None,
+    extract_symbols_from_code=None,
 ) -> dict[str, Any]:
     """Extract code symbols from retrieved documentation chunks.
 
-    Uses the code_symbol_extractor to perform AST-level analysis of code
-    blocks within the retrieved documents. Results are grouped by symbol
-    type for structured prompt augmentation.
+    Uses the code_symbol_extractor for AST-level analysis of code
+    blocks within the retrieved documents.
 
     Args:
         retrieved_docs: Retrieved documentation chunks with 'content' keys.
         target_language: Filter for symbols matching this language.
+        extract_code_blocks: Function from code_symbol_extractor (auto-loaded if None).
+        extract_symbols_from_code: Function from code_symbol_extractor (auto-loaded if None).
 
     Returns:
-        Dict with keys: 'symbols' (grouped by type), 'imports', 'functions',
-        'classes', 'method_calls', 'total_count'.
-        Returns empty dict if no symbols are found.
+        Dict with keys: 'symbols' (grouped by type), 'total_count'.
     """
-    try:
-        from enterprise_agentic_rag.rag.graph.code_symbol_extractor import (
-            extract_code_blocks,
-            extract_symbols_from_code,
-        )
-    except ImportError:
-        return {}
+    # Auto-load from code_symbol_extractor if not provided
+    if extract_code_blocks is None or extract_symbols_from_code is None:
+        try:
+            from enterprise_agentic_rag.rag.graph.code_symbol_extractor import (
+                extract_code_blocks as _ecb,
+            )
+            from enterprise_agentic_rag.rag.graph.code_symbol_extractor import (
+                extract_symbols_from_code as _esc,
+            )
+            extract_code_blocks = _ecb
+            extract_symbols_from_code = _esc
+        except ImportError:
+            return {}
 
     all_symbols: dict[str, list[dict[str, Any]]] = {
         "imports": [],
@@ -279,7 +293,7 @@ def _extract_symbols_from_docs(
                 entry = {
                     "name": sym.name,
                     "normalized_name": sym.normalized_name,
-                    "source_code": sym.source_code[:200],  # truncate
+                    "source_code": sym.source_code[:200],
                     "confidence": sym.confidence,
                 }
                 sym_type = sym.type.upper()
@@ -315,15 +329,7 @@ def _extract_symbols_from_docs(
 
 
 def _format_symbols_for_prompt(symbols_info: dict[str, Any], language: str) -> str:
-    """Format extracted symbols into an LLM-friendly prompt section.
-
-    Args:
-        symbols_info: Output from _extract_symbols_from_docs.
-        language: Target programming language.
-
-    Returns:
-        Formatted string ready for injection into the LLM prompt.
-    """
+    """Format extracted symbols into an LLM-friendly prompt section."""
     sym = symbols_info.get("symbols", {})
     if not sym:
         return ""

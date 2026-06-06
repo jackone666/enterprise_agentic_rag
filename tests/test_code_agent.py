@@ -1,7 +1,7 @@
-"""Tests for code agent — code generation, template fallback, and symbol extraction."""
+"""Tests for code generator (prompts/code_prompts.py) and code executor (agents/code_executor.py)."""
 
 
-from enterprise_agentic_rag.agents.code_agent import (
+from enterprise_agentic_rag.prompts.code_prompts import (
     _detect_language,
     _extract_symbols_from_docs,
     _format_symbols_for_prompt,

@@ -15,11 +15,11 @@ reaching into individual modules.
 
 from __future__ import annotations
 
-from enterprise_agentic_rag.agents.code_agent import generate_code
 from enterprise_agentic_rag.agents.knowledge_agent import generate_answer_async
 from enterprise_agentic_rag.agents.master_agent import MasterAgent, MasterDecision
 from enterprise_agentic_rag.agents.tool_agent import call_tools
 from enterprise_agentic_rag.agents.verifier_agent import verify_answer_async
+from enterprise_agentic_rag.prompts.code_prompts import generate_code
 
 __all__ = [
     # Master

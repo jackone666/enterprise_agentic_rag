@@ -131,53 +131,6 @@ class PromptBuilder:
         return "\n".join(parts)
 
     # ------------------------------------------------------------------
-    # Code agent prompt
-    # ------------------------------------------------------------------
-    @staticmethod
-    def build_code_agent_prompt(
-        query: str,
-        retrieved_docs: list[dict[str, Any]] | None = None,
-        language: str = "typescript",
-        execution_result: dict[str, Any] | None = None,
-    ) -> str:
-        """Build the code-generation prompt.
-
-        Includes optional execution result for the fix-retry loop.
-        """
-        retrieved_docs = retrieved_docs or []
-
-        parts = [
-            f"你是一个{language.upper()}代码生成助手。",
-            "请根据提供的参考文档生成一个完整、可运行的代码示例。",
-            "",
-            "要求：",
-            "1. 代码必须完整可运行（包含所有必要的 import/require）",
-            "2. 对关键步骤添加注释说明",
-            "3. 包含错误处理逻辑",
-            "4. 代码不超过 80 行",
-        ]
-
-        if retrieved_docs:
-            doc_lines = ["\n## 参考文档\n"]
-            for i, doc in enumerate(retrieved_docs[:5]):
-                source = doc.get("source", "unknown")
-                content = doc.get("content", "")[:1500]
-                doc_lines.append(f"### 文档 {i + 1} — {source}")
-                doc_lines.append(content)
-            parts.append("\n".join(doc_lines))
-
-        if execution_result:
-            parts.append("\n## 上次执行结果（失败）")
-            parts.append(f"- 标准输出: {execution_result.get('stdout', '')}")
-            parts.append(f"- 错误输出: {execution_result.get('stderr', '')}")
-            parts.append(f"- 退出码: {execution_result.get('exit_code', -1)}")
-            parts.append("\n请修复上述错误，重新生成代码。")
-
-        parts.append(f"\n## 用户需求\n{query}")
-        parts.append(f"\n请生成{language}代码（只返回代码，不要解释）：")
-        return "\n".join(parts)
-
-    # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
     @staticmethod

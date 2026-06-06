@@ -11,8 +11,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from enterprise_agentic_rag.agents.code_agent import generate_code as code_agent_generate
+from enterprise_agentic_rag.agents.code_executor import CodeExecutor
 from enterprise_agentic_rag.graph.state import AgentState
+from enterprise_agentic_rag.prompts.code_prompts import generate_code as code_prompts_generate
 
 
 async def generate_code_node(state: AgentState) -> dict[str, Any]:
@@ -20,7 +21,7 @@ async def generate_code_node(state: AgentState) -> dict[str, Any]:
     query = state.get("query", "")
     docs = state.get("retrieved_docs", [])
 
-    result = code_agent_generate(query, docs, language=state.get("code_language", ""))
+    result = code_prompts_generate(query, docs, language=state.get("code_language", ""))
 
     return {
         "code_snippet": result.get("code_snippet", ""),
@@ -31,9 +32,8 @@ async def generate_code_node(state: AgentState) -> dict[str, Any]:
 
 
 async def execute_code_node(state: AgentState) -> dict[str, Any]:
-    """Execute the generated code in the sandbox.
+    """Execute the generated code in the sandbox via CodeExecutor.
 
-    Uses CodeExecutionTool for security-gated execution.
     Increments code_retry_count to enable routing gate (avoids infinite loop).
     """
     code = state.get("code_snippet", "")
@@ -48,31 +48,12 @@ async def execute_code_node(state: AgentState) -> dict[str, Any]:
             "last_agent_step": "execute_code",
         }
 
-    from enterprise_agentic_rag.tools.code_execution_tool import get_code_execution_tool
-
     t0 = time.time()
-    tool = get_code_execution_tool()
-
-    try:
-        result = await tool.execute(code=code, language=language)
-    except Exception as exc:
-        result = type("ToolResult", (), {})()
-        result.success = False
-        result.error = str(exc)
-        result.output = {"exit_code": -1, "stderr": str(exc), "stdout": ""}
-
+    executor = CodeExecutor()
+    exec_result = await executor.run(code=code, language=language)
     latency_ms = (time.time() - t0) * 1000
 
-    exec_result = result.output if result.success else {
-        "stdout": "",
-        "stderr": result.error or "代码执行失败",
-        "exit_code": -1,
-    }
-
-    if not isinstance(exec_result, dict):
-        exec_result = {"stdout": str(exec_result), "stderr": "", "exit_code": 0}
-
-    code_verified = result.success and exec_result.get("exit_code") == 0
+    code_verified = exec_result.get("exit_code") == 0
 
     return {
         "code_execution_result": exec_result,
