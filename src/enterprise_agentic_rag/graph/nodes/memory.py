@@ -40,21 +40,26 @@ async def load_memory(state: AgentState) -> dict[str, Any]:
 async def save_memory(state: AgentState) -> dict[str, Any]:
     session_id = state.get("session_id", "default")
 
-    # Record final request metrics
+    # Record final request metrics (non-critical, wrap to avoid corrupting state)
     intent = state.get("intent", "unknown")
     need_human = state.get("need_human", False)
     has_fallback = bool(state.get("fallback_reason", ""))
 
-    tracer.metrics.record_request(
-        session_id=session_id,
-        intent=intent,
-        latency_ms=0.0,
-        success=not need_human,
-        need_human=need_human,
-        has_fallback=has_fallback,
-    )
+    try:
+        tracer.metrics.record_request(
+            intent=intent,
+            latency_ms=0.0,
+            success=not need_human,
+            need_human=need_human,
+            has_fallback=has_fallback,
+        )
+    except Exception:
+        pass  # Metrics are non-critical; don't let failures crash the workflow
 
-    cid = memory.save_memory_context(session_id, dict(state))
-    persist_qa_log(dict(state))
-
-    return {"memory_ckpt_id": cid}
+    # Persistence (non-critical — fire-and-forget, wrap to avoid crashing workflow)
+    try:
+        cid = memory.save_memory_context(session_id, dict(state))
+        persist_qa_log(dict(state))
+        return {"memory_ckpt_id": cid if cid else session_id}
+    except Exception:
+        return {"memory_ckpt_id": session_id}

@@ -106,12 +106,12 @@ def after_answer(state: AgentState) -> Literal["verify_answer", "finalize_answer
     return "verify_answer"
 
 
-def after_verification(state: AgentState) -> Literal["finalize_answer", "master_agent"]:
-    """Verification complete → finalize. Exception: route through master for retry."""
+def after_verification(state: AgentState) -> Literal["finalize_answer", "human_fallback"]:
+    """Verification complete → finalize. Verification failed → human_fallback."""
     if state.get("verified", False):
         return "finalize_answer"
-    # Verification failed → route through master for retry
-    return "master_agent"
+    # Verification failed → human fallback (direct, not through master)
+    return "human_fallback"
 
 
 def after_master(
@@ -222,13 +222,13 @@ def build_workflow() -> StateGraph:
         },
     )
 
-    # Happy path: verification → finalize (bypass master); exception → master
+    # Happy path: verification → finalize (bypass master); exception → human_fallback
     builder.add_conditional_edges(
         "verify_answer",
         after_verification,
         {
             "finalize_answer": "finalize_answer",
-            "master_agent": "master_agent",
+            "human_fallback": "human_fallback",
         },
     )
 
@@ -239,9 +239,10 @@ def build_workflow() -> StateGraph:
         "rewrite_query",
         "generate_code",
         "execute_code",
-        "human_fallback",
     ):
         builder.add_edge(worker, "master_agent")
+    # human_fallback is terminal (no master routing after escalation)
+    builder.add_edge("human_fallback", "save_memory")
 
     # Master → selected slave / terminal path
     builder.add_conditional_edges(

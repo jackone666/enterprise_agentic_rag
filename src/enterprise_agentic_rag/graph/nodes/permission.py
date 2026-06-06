@@ -24,7 +24,7 @@ async def check_permission(state: AgentState) -> dict[str, Any]:
         fb = recovery.evaluate_failure(dict(state), fallback_type="permission_denied")
         return {**fb, "user_role": info["role"], "permissions": perms}
 
-    return {"user_role": info["role"], "permissions": perms, "error": ""}
+    return {"user_role": info["role"], "permissions": perms}
 
 
 async def final_refusal_node(state: AgentState) -> dict[str, Any]:
