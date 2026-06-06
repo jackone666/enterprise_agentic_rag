@@ -13,8 +13,6 @@ from typing import Any
 
 import httpx
 
-from enterprise_agentic_rag.config.settings import get_settings
-
 logger = logging.getLogger(__name__)
 
 MILVUS_HOST = os.getenv("MILVUS_HOST", "localhost")

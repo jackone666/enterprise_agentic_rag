@@ -71,8 +71,10 @@ async def _migrate_events(dry_run: bool = False) -> dict:
     """Read data/logs/events.jsonl and insert into PG event tables."""
     from enterprise_agentic_rag.storage.database import get_db_manager
     from enterprise_agentic_rag.storage.models import (
-        NodeEventModel, RetrievalEventModel,
-        VerificationEventModel, LLMEventModel,
+        LLMEventModel,
+        NodeEventModel,
+        RetrievalEventModel,
+        VerificationEventModel,
     )
 
     path = str(_project_root / "data" / "logs" / "events.jsonl")
@@ -273,6 +275,7 @@ async def _migrate_regression_cases(dry_run: bool = False) -> dict:
 def _migrate_near_dedup(dry_run: bool = False) -> dict:
     """Read data/near_dedup_index.json and write to Redis dedup keys."""
     import redis as redis_lib
+
     from enterprise_agentic_rag.config.settings import get_settings
 
     path = str(_project_root / "data" / "near_dedup_index.json")

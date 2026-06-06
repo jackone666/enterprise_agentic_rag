@@ -68,10 +68,11 @@ async def verify_answer_async(
     """Verify answer asynchronously — true LLM-capable production path."""
     if use_claim_level and draft_answer.strip():
         try:
-            from enterprise_agentic_rag.agents.claim_verifier import verify_answer_with_claims
             # Current claim verifier is sync and rule-heavy; run it in a worker
             # thread so it cannot block the request event loop.
             import asyncio
+
+            from enterprise_agentic_rag.agents.claim_verifier import verify_answer_with_claims
             verified, reason, claim_result = await asyncio.to_thread(
                 verify_answer_with_claims,
                 draft_answer,

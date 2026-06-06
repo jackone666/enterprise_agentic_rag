@@ -22,12 +22,6 @@ def persist_qa_log(state: dict) -> None:
     try:
         from enterprise_agentic_rag.storage.repositories import Repository
 
-        node_events = state.get("node_events", [])
-        total_ms = 0.0
-        for evt in node_events:
-            if evt.get("event_type") == "node_end":
-                total_ms += evt.get("latency_ms", 0)
-
         repo = Repository()
         coro = repo.insert_qa_log(
             trace_id=state.get("trace_id", ""),
@@ -40,7 +34,7 @@ def persist_qa_log(state: dict) -> None:
             verified=state.get("verified", True),
             need_human=state.get("need_human", False),
             fallback_reason=state.get("fallback_reason", ""),
-            latency_ms=round(total_ms, 2),
+            latency_ms=0.0,
         )
 
         try:

@@ -171,7 +171,7 @@ class MasterAgent:
         parts = [ROUTING_SYSTEM_PROMPT]
 
         # Current step
-        parts.append(f"\n## 当前工作流状态")
+        parts.append("\n## 当前工作流状态")
         parts.append(f"last_agent_step: {state.get('last_agent_step', 'start')}")
 
         # Deep intent
@@ -207,7 +207,7 @@ class MasterAgent:
         code = state.get("code_snippet", "")
         parts.append(f"code_snippet present: {bool(code)}")
         parts.append(f"code_verified: {state.get('code_verified', False)}")
-        parts.append(f"code_retry_attempted: {state.get('code_retry_attempted', False)}")
+        parts.append(f"code_retry_count: {state.get('code_retry_count', 0)}")
 
         # User query (truncated)
         query = state.get("query", "")
@@ -356,7 +356,7 @@ class MasterAgent:
     def _after_code_execution_agent(state: dict[str, Any]) -> MasterDecision:
         if state.get("code_verified", False):
             return MasterDecision("generate_answer", "code verified; generate final explanation")
-        if not state.get("code_retry_attempted", False):
+        if state.get("code_retry_count", 0) == 0:
             return MasterDecision("generate_code", "code execution failed; retry code generation")
         return MasterDecision("finalize_answer", "code execution failed after retry; finalize with disclaimer")
 

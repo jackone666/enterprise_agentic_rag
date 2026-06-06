@@ -5,7 +5,6 @@ import pytest
 from enterprise_agentic_rag.agents.knowledge_agent import generate_answer, generate_answer_async
 from enterprise_agentic_rag.llm.base import LLMResponse
 
-
 # ===========================================================================
 # TestKnowledgeAgentTemplate
 # ===========================================================================

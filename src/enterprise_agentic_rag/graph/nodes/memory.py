@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from enterprise_agentic_rag.graph.dependencies import memory, recovery, tracer
+from enterprise_agentic_rag.graph.dependencies import memory, tracer
 from enterprise_agentic_rag.graph.persistence import persist_qa_log
 from enterprise_agentic_rag.graph.state import AgentState
 
@@ -44,23 +44,17 @@ async def save_memory(state: AgentState) -> dict[str, Any]:
     intent = state.get("intent", "unknown")
     need_human = state.get("need_human", False)
     has_fallback = bool(state.get("fallback_reason", ""))
-    node_events = state.get("node_events", [])
-    total_ms = 0.0
-    for evt in node_events:
-        if evt.get("event_type") == "node_end":
-            total_ms += evt.get("latency_ms", 0)
 
     tracer.metrics.record_request(
         session_id=session_id,
         intent=intent,
-        latency_ms=round(total_ms, 2),
+        latency_ms=0.0,
         success=not need_human,
         need_human=need_human,
         has_fallback=has_fallback,
     )
 
-    snap = tracer.metrics.snapshot()
     cid = memory.save_memory_context(session_id, dict(state))
     persist_qa_log(dict(state))
 
-    return {"memory_ckpt_id": cid, "metrics_snapshot": snap}
+    return {"memory_ckpt_id": cid}

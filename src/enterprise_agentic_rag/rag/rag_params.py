@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -61,7 +61,7 @@ class RAGParams:
     graph_engine: str = "neo4j"
 
     @classmethod
-    def from_env(cls) -> "RAGParams":
+    def from_env(cls) -> RAGParams:
         return cls(
             retrieval_top_k=int(os.getenv("RETRIEVAL_K", "5")),
             chunk_size=int(os.getenv("CHUNK_SIZE", "500")),

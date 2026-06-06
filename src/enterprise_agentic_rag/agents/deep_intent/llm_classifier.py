@@ -12,11 +12,6 @@ import re
 from typing import Any
 
 from enterprise_agentic_rag.agents.deep_intent.rules import RuleIntentResult
-from enterprise_agentic_rag.agents.deep_intent.schema import (
-    ALLOWED_INTENTS,
-    ALLOWED_MODES,
-    ALLOWED_TOOLS,
-)
 
 logger = logging.getLogger(__name__)
 

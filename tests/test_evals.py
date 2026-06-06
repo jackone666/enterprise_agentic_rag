@@ -14,7 +14,6 @@ from enterprise_agentic_rag.evals.dataset import EvalCase, EvalDataset, FailedCa
 from enterprise_agentic_rag.evals.online_feedback import FeedbackHandler, FeedbackRecord
 from enterprise_agentic_rag.evals.rag_eval import RAGEvaluator
 
-
 # =========================================================================
 # EvalDataset
 # =========================================================================
@@ -354,7 +353,7 @@ class TestE2EFeedbackFlow:
 
     def test_chat_result_stored_and_retrieved(self) -> None:
         """Simulate app-level result storage for feedback lookup."""
-        from enterprise_agentic_rag.app.main import _store_result, _recent_results
+        from enterprise_agentic_rag.app.main import _recent_results, _store_result
 
         # Clear
         _recent_results.clear()
@@ -365,7 +364,7 @@ class TestE2EFeedbackFlow:
 
     def test_result_store_cap(self) -> None:
         """Test that the result store doesn't exceed _MAX_RECENT."""
-        from enterprise_agentic_rag.app.main import _store_result, _recent_results, _MAX_RECENT
+        from enterprise_agentic_rag.app.main import _MAX_RECENT, _recent_results, _store_result
 
         _recent_results.clear()
         for i in range(_MAX_RECENT + 10):

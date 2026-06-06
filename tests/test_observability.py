@@ -28,7 +28,6 @@ from enterprise_agentic_rag.observability.metrics import (
 )
 from enterprise_agentic_rag.observability.tracer import Tracer, get_tracer
 
-
 # =========================================================================
 # Event Schema
 # =========================================================================
@@ -353,16 +352,12 @@ class TestTracedNode:
 
         wrapped = self.tracer.traced_node("my_node", my_node)
         state = {"trace_id": "t1", "session_id": "s1", "user_id": "u1",
-                 "query": "测试", "node_events": []}
+                 "query": "测试"}
 
         output = await wrapped(state)
         assert output["result"] == "ok"
-        assert "node_events" in output
-        assert len(output["node_events"]) == 2  # start + end
-        assert output["node_events"][0]["event_type"] == EventType.NODE_START
-        assert output["node_events"][1]["event_type"] == EventType.NODE_END
-        assert output["node_events"][1]["node_name"] == "my_node"
-        assert output["node_events"][1]["success"] is True
+        # node_events written to JSONL logger, not to output state
+        assert "node_events" not in output
 
     @pytest.mark.asyncio
     async def test_traced_node_captures_exceptions(self) -> None:
@@ -371,13 +366,12 @@ class TestTracedNode:
 
         wrapped = self.tracer.traced_node("failing", failing_node)
         state = {"trace_id": "t1", "session_id": "s1", "user_id": "u1",
-                 "query": "", "node_events": []}
+                 "query": ""}
 
         output = await wrapped(state)
         # Should not raise — error captured in output
         assert "error" in output
-        assert output["node_events"][1]["success"] is False
-        assert "模拟失败" in output["node_events"][1]["error"]
+        assert "模拟失败" in output["error"]
 
     @pytest.mark.asyncio
     async def test_traced_node_output_summary(self) -> None:
@@ -390,12 +384,12 @@ class TestTracedNode:
 
         wrapped = self.tracer.traced_node("big_node", big_node)
         state = {"trace_id": "t1", "session_id": "s1", "user_id": "u1",
-                 "query": "", "node_events": []}
+                 "query": ""}
 
         output = await wrapped(state)
-        # Large fields like retrieved_docs should NOT appear in output_summary
-        end_event = output["node_events"][1]
-        assert "retrieved_docs" not in end_event.get("output_summary", "")
+        # Large fields should pass through cleanly
+        assert output["intent"] == "technical_question"
+        assert output["verified"] is True
 
 
 # =========================================================================
@@ -430,8 +424,8 @@ class TestWorkflowObservability:
         self.logger = logger
 
     def teardown_method(self) -> None:
-        import enterprise_agentic_rag.observability.tracer as tr_mod
         import enterprise_agentic_rag.graph.workflow as wf_mod
+        import enterprise_agentic_rag.observability.tracer as tr_mod
         tr_mod._tracer = self._old_tracer
         wf_mod._tracer = self._old_wf_tracer
 
@@ -442,27 +436,22 @@ class TestWorkflowObservability:
             "query": "如何重置密码？",
             "user_id": "u001",
             "session_id": "obs_test",
-            "trace_id": "trace-001",
-            "node_events": [],
+                       "trace_id": "trace-001",
         })
-        assert "node_events" in result
-        # Should have at least start+end for several nodes
-        events = result["node_events"]
-        assert len(events) >= 8  # at minimum 4 nodes × 2 events each
+        # node_events moved to JSONL logger only (not in state)
+        assert "node_events" not in result
 
     @pytest.mark.asyncio
     async def test_workflow_produces_metrics_snapshot(self) -> None:
-        """Final state should contain a metrics_snapshot dict."""
+        """Final state no longer contains metrics_snapshot (moved to tracer)."""
         result = await self.graph.ainvoke({
             "query": "API 认证方式有哪些？",
             "user_id": "u001",
             "session_id": "obs_metrics",
             "trace_id": "trace-002",
-            "node_events": [],
         })
-        snap = result.get("metrics_snapshot", {})
-        assert "total_requests" in snap
-        assert snap["total_requests"] >= 1
+        # metrics_snapshot removed from state; use tracer.metrics directly
+        assert result.get("metrics_snapshot", {}) == {}
 
     @pytest.mark.asyncio
     async def test_trace_id_preserved(self) -> None:
@@ -472,24 +461,18 @@ class TestWorkflowObservability:
             "user_id": "u001",
             "session_id": "obs_trace_id",
             "trace_id": "my-custom-trace",
-            "node_events": [],
         })
         assert result.get("trace_id") == "my-custom-trace"
 
     @pytest.mark.asyncio
     async def test_events_persisted(self) -> None:
-        """Events should be persisted — PG primary or JSONL fallback."""
+        """Events should be persisted — JSONL logger (PG optional)."""
         result = await self.graph.ainvoke({
             "query": "如何重置密码？",
             "user_id": "u001",
             "session_id": "obs_persist",
             "trace_id": "trace-persist",
-            "node_events": [],
         })
-
-        # State events are always collected (primary observability channel)
-        state_events = result.get("node_events", [])
-        assert len(state_events) > 0, "No events in state (tracer not injected correctly)"
 
         # Logger persistence: try PG first, then JSONL fallback
         pg_events = self._read_pg_events("trace-persist")
@@ -510,8 +493,10 @@ class TestWorkflowObservability:
         """Read events from PostgreSQL for a given trace_id."""
         try:
             import asyncio
-            from enterprise_agentic_rag.storage.database import get_db_manager
+
             from sqlalchemy import text
+
+            from enterprise_agentic_rag.storage.database import get_db_manager
             dbm = get_db_manager()
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -533,18 +518,19 @@ class TestWorkflowObservability:
 
     @pytest.mark.asyncio
     async def test_all_node_names_appear(self) -> None:
-        """The event stream should cover the critical nodes."""
+        """The event stream should cover the critical nodes (via JSONL logger)."""
         result = await self.graph.ainvoke({
             "query": "数据分类标准是什么？",
             "user_id": "u001",
             "session_id": "obs_nodes",
             "trace_id": "trace-nodes",
-            "node_events": [],
         })
+        # node_events no longer in state; verify via JSONL logger
+        jsonl_events = self.logger.read_events()
         node_names = {
             evt["node_name"]
-            for evt in result.get("node_events", [])
-            if evt["event_type"] == "node_end"
+            for evt in jsonl_events
+            if evt.get("event_type") == "node_end"
         }
         # Critical nodes should be present
         assert "load_memory" in node_names
@@ -561,7 +547,6 @@ class TestWorkflowObservability:
             "user_id": "u001",
             "session_id": "obs_cum_1",
             "trace_id": "trace-cum-1",
-            "node_events": [],
         })
         # Request 2
         await self.graph.ainvoke({
@@ -569,7 +554,6 @@ class TestWorkflowObservability:
             "user_id": "u002",
             "session_id": "obs_cum_2",
             "trace_id": "trace-cum-2",
-            "node_events": [],
         })
         snap = get_metrics_collector().snapshot()
         assert snap["total_requests"] >= 2
@@ -577,8 +561,8 @@ class TestWorkflowObservability:
     @pytest.mark.asyncio
     async def test_pipeline_never_crashes_on_log_failure(self) -> None:
         """Even with a bad log path, the pipeline must not crash."""
-        import enterprise_agentic_rag.observability.tracer as tr_mod
         import enterprise_agentic_rag.graph.workflow as wf_mod
+        import enterprise_agentic_rag.observability.tracer as tr_mod
 
         # Use a path that can't be written to
         bad_logger = EventLogger(log_path="/root/forbidden/events.jsonl")
@@ -595,7 +579,6 @@ class TestWorkflowObservability:
                 "user_id": "u001",
                 "session_id": "obs_crash",
                 "trace_id": "trace-crash",
-                "node_events": [],
             })
             # Must complete regardless of log failure
             assert "final_answer" in result

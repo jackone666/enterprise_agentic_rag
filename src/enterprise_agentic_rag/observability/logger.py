@@ -125,8 +125,11 @@ class EventLogger:
 
         try:
             from enterprise_agentic_rag.storage.models import (
-                Base, NodeEventModel, RetrievalEventModel,
-                VerificationEventModel, LLMEventModel,
+                Base,
+                LLMEventModel,
+                NodeEventModel,
+                RetrievalEventModel,
+                VerificationEventModel,
             )
         except ImportError:
             return False
@@ -168,11 +171,14 @@ class EventLogger:
         if not await dbm.check_connection():
             raise RuntimeError("PostgreSQL unavailable")
 
-        from enterprise_agentic_rag.storage.models import (
-            NodeEventModel, RetrievalEventModel,
-            VerificationEventModel, LLMEventModel,
-        )
         import json as _json
+
+        from enterprise_agentic_rag.storage.models import (
+            LLMEventModel,
+            NodeEventModel,
+            RetrievalEventModel,
+            VerificationEventModel,
+        )
 
         model_map = {
             "node_events": NodeEventModel,

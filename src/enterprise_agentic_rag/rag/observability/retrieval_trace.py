@@ -119,7 +119,7 @@ class RetrievalTrace:
         if self.degraded_from:
             lines.append(f"║ ⚠ Degraded: {self.degraded_from} → {self.degraded_to}")
         if self.graph_failed:
-            lines.append(f"║ ⚠ Graph failed: graph weight zeroed, continuing with keyword+vector")
+            lines.append("║ ⚠ Graph failed: graph weight zeroed, continuing with keyword+vector")
 
         lines.extend([
             f"║ Hits — KW:{self.keyword_hit_count} VEC:{self.vector_hit_count} GRAPH:{self.graph_hit_count} EXT:{self.external_hit_count}",

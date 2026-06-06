@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # Mock fallback (used only when PostgreSQL is unreachable)
 PERMISSION_MAP: dict[str, dict[str, Any]] = {
     "u001": {"role": "admin", "permissions": ["read", "write", "admin", "knowledge_search", "ticket_manage"]},

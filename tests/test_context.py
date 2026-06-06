@@ -10,7 +10,6 @@ from enterprise_agentic_rag.context.context_manager import ContextManager
 from enterprise_agentic_rag.context.prompt_builder import PromptBuilder
 from enterprise_agentic_rag.context.token_budget import BudgetAllocation, TokenBudget
 
-
 # =========================================================================
 # TokenBudget
 # =========================================================================

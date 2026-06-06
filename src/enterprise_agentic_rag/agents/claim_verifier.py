@@ -11,7 +11,6 @@ Reference:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -22,10 +21,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Claim:
-    """An atomic factual assertion extracted from an answer."""
+    """An atomic factual assertion extracted from an answer.
+
+    v3.2: claim_type removed — only two categories remain:
+      hallucination (factual claims with confidence< 0.3) and
+      citation (claims with evidence found in sources).
+    """
 
     text: str
-    claim_type: str = "factual"  # factual | code | api | version | comparison
     grounded: bool = False
     evidence: list[str] = field(default_factory=list)
     confidence: float = 0.0
@@ -64,7 +67,6 @@ class ClaimVerificationResult:
             "claims": [
                 {
                     "text": c.text[:200],
-                    "type": c.claim_type,
                     "grounded": c.grounded,
                     "confidence": c.confidence,
                     "issues": c.issues,
@@ -75,32 +77,15 @@ class ClaimVerificationResult:
 
 
 # ---------------------------------------------------------------------------
-# Claim extraction patterns
+# Claim extraction
 # ---------------------------------------------------------------------------
-
-# Sentences that express factual claims
-_CLAIM_PATTERNS = [
-    # API references
-    (r'(@ohos\.[\w.]+|import\s+\{[^}]+\}\s+from\s+[\'"]@ohos\.[^\'"]+[\'"])', "api"),
-    # Code blocks
-    (r'```[\s\S]*?```', "code"),
-    # Version references
-    (r'(API\s*\d+|HarmonyOS\s*(NEXT\s*)?\d+\.\d+)', "version"),
-    # Error codes
-    (r'(\d{8,})', "error_code"),
-    # Comparisons
-    (r'(不同于|区别于|与.+相比|比.+更)', "comparison"),
-    # Migration statements
-    (r'(从.+迁移|替代|废弃|deprecated|removed\s+in)', "migration"),
-]
 
 
 def extract_claims(answer: str) -> list[Claim]:
     """Decompose an answer into atomic claims.
 
-    Uses sentence splitting + pattern matching to identify claim types.
-    Each sentence is a potential claim; sentences with code/API/version
-    references are tagged with their claim type.
+    v3.2: claim_type removed — all claims are treated as factual,
+    verified via citation (evidence in sources) or keyword overlap.
     """
     if not answer or not answer.strip():
         return []
@@ -109,17 +94,7 @@ def extract_claims(answer: str) -> list[Claim]:
     sentences = re.split(r'(?<=[。！？.!?\n])\s*', answer)
     sentences = [s.strip() for s in sentences if s.strip() and len(s.strip()) > 3]
 
-    claims: list[Claim] = []
-    for sent in sentences:
-        claim_type = "factual"
-        for pattern, ctype in _CLAIM_PATTERNS:
-            if re.search(pattern, sent):
-                claim_type = ctype
-                break
-
-        claims.append(Claim(text=sent, claim_type=claim_type))
-
-    return claims
+    return [Claim(text=sent) for sent in sentences]
 
 
 # ---------------------------------------------------------------------------
@@ -134,17 +109,13 @@ def verify_claims(
 ) -> ClaimVerificationResult:
     """Verify each claim against retrieved documents.
 
-    Verification strategy:
-    - API/code claims: check if the API/symbol appears in docs
-    - Version claims: check if version is mentioned in docs
-    - Error code claims: check if error code appears in docs
-    - Factual claims: check semantic overlap with doc content
-    - Comparison claims: check if both sides appear in docs
+    Two categories: hallucination (low-confidence claims) and citation
+    (claims with evidence found in sources).
 
     Args:
         claims: Extracted claims from the answer.
         retrieved_docs: Source documents for verification.
-        use_llm: Whether to use LLM for verification (expensive but accurate).
+        use_llm: Whether to use LLM for verification (reserved for future).
 
     Returns:
         ClaimVerificationResult with per-claim scoring.
@@ -161,7 +132,13 @@ def verify_claims(
     combined_corpus = " ".join(doc_contents).lower()
 
     for claim in claims:
-        _verify_single_claim(claim, combined_corpus, doc_contents, doc_titles)
+        _verify_factual_claim(claim, combined_corpus)
+
+        # Find supporting evidence (citation category)
+        for i, content in enumerate(doc_contents):
+            if _text_overlap(claim.text.lower(), content.lower()) > 0.3:
+                source = doc_titles[i] if i < len(doc_titles) else f"doc_{i}"
+                claim.evidence.append(source[:100])
 
     # Compute overall result
     total = len(claims)
@@ -192,131 +169,8 @@ def verify_claims(
     )
 
 
-def _verify_single_claim(
-    claim: Claim,
-    combined_corpus: str,
-    doc_contents: list[str],
-    doc_titles: list[str],
-) -> None:
-    """Verify a single claim against the document corpus."""
-    claim_text_lower = claim.text.lower()
-
-    if claim.claim_type == "api":
-        _verify_api_claim(claim, combined_corpus)
-    elif claim.claim_type == "code":
-        _verify_code_claim(claim, combined_corpus)
-    elif claim.claim_type == "version":
-        _verify_version_claim(claim, combined_corpus)
-    elif claim.claim_type == "error_code":
-        _verify_error_claim(claim, combined_corpus)
-    elif claim.claim_type == "comparison":
-        _verify_comparison_claim(claim, combined_corpus, doc_contents)
-    else:
-        _verify_factual_claim(claim, combined_corpus)
-
-    # Find supporting evidence
-    for i, content in enumerate(doc_contents):
-        if _text_overlap(claim_text_lower, content.lower()) > 0.3:
-            source = doc_titles[i] if i < len(doc_titles) else f"doc_{i}"
-            claim.evidence.append(source[:100])
-
-
-def _verify_api_claim(claim: Claim, corpus: str) -> None:
-    """Verify API claims: check if API references appear in corpus."""
-    api_refs = re.findall(r'@ohos\.[\w.]+', claim.text)
-    if not api_refs:
-        # Look for API-like patterns
-        api_refs = re.findall(r'([\w]+\.(?:[\w]+\.)*[\w]+)', claim.text)
-
-    matches = sum(1 for ref in api_refs if ref.lower() in corpus)
-    if api_refs:
-        ratio = matches / len(api_refs)
-        claim.confidence = min(1.0, 0.4 + ratio * 0.6)
-        claim.grounded = ratio >= 0.5
-        if not claim.grounded:
-            missing = [r for r in api_refs if r.lower() not in corpus]
-            claim.issues.append(f"API references not found in sources: {missing}")
-    else:
-        claim.confidence = 0.5
-        claim.issues.append("No API references to verify")
-
-
-def _verify_code_claim(claim: Claim, corpus: str) -> None:
-    """Verify code claims: check if code patterns appear in corpus."""
-    # Extract code identifiers from claim
-    code_ids = re.findall(r'\b([a-zA-Z_]\w{2,})\b', claim.text)
-    # Filter common words
-    stop_words = {"the", "and", "for", "this", "that", "with", "from", "your", "have", "been"}
-    code_ids = [cid for cid in code_ids if cid.lower() not in stop_words]
-
-    if code_ids:
-        matches = sum(1 for cid in code_ids if cid.lower() in corpus)
-        ratio = matches / len(code_ids)
-        claim.confidence = min(1.0, 0.3 + ratio * 0.7)
-        claim.grounded = ratio >= 0.4
-    else:
-        claim.confidence = 0.4
-        claim.grounded = False
-
-
-def _verify_version_claim(claim: Claim, corpus: str) -> None:
-    """Verify version claims: check if version numbers appear in corpus."""
-    versions = re.findall(r'(API\s*\d+|HarmonyOS\s*(?:NEXT\s*)?\d+\.\d+|\d+\.\d+\.\d+)', claim.text)
-
-    if versions:
-        matches = sum(1 for v in versions if v.replace(" ", "").lower() in corpus.replace(" ", ""))
-        ratio = matches / len(versions)
-        claim.confidence = min(1.0, 0.3 + ratio * 0.7)
-        claim.grounded = ratio >= 0.5
-        if not claim.grounded:
-            claim.issues.append(f"Version references not confirmed: {versions}")
-    else:
-        claim.confidence = 0.5
-
-
-def _verify_error_claim(claim: Claim, corpus: str) -> None:
-    """Verify error code claims: check if error codes appear in corpus."""
-    error_codes = re.findall(r'(\d{8,})', claim.text)
-
-    if error_codes:
-        matches = sum(1 for ec in error_codes if ec in corpus)
-        ratio = matches / len(error_codes)
-        claim.confidence = min(1.0, 0.2 + ratio * 0.8)
-        claim.grounded = ratio >= 0.5
-        if not claim.grounded:
-            claim.issues.append(f"Error codes not found in sources: {error_codes}")
-    else:
-        claim.confidence = 0.5
-
-
-def _verify_comparison_claim(claim: Claim, corpus: str, doc_contents: list[str]) -> None:
-    """Verify comparison claims: both sides should appear in docs."""
-    # Split on comparison markers
-    parts = re.split(r'不同于|区别于|与|相比|比|更|vs\.?|versus', claim.text, maxsplit=2)
-    if len(parts) >= 2:
-        left = parts[0].strip().lower()
-        right = parts[-1].strip().lower() if len(parts) > 1 else ""
-
-        left_found = any(left[:20] in doc.lower() for doc in doc_contents)
-        right_found = any(right[:20] in doc.lower() for doc in doc_contents) if right else False
-
-        if left_found and right_found:
-            claim.confidence = 0.9
-            claim.grounded = True
-        elif left_found or right_found:
-            claim.confidence = 0.5
-            claim.grounded = False
-            claim.issues.append("Comparison partially grounded — one side not found")
-        else:
-            claim.confidence = 0.2
-            claim.grounded = False
-            claim.issues.append("Neither side of comparison found in sources")
-    else:
-        claim.confidence = 0.4
-
-
 def _verify_factual_claim(claim: Claim, corpus: str) -> None:
-    """Verify factual claims via semantic keyword overlap."""
+    """Verify a factual claim via semantic keyword overlap."""
     claim_words = set(claim.text.lower().split())
     # Filter meaningful words (>2 chars)
     claim_keywords = {w for w in claim_words if len(w) > 2}

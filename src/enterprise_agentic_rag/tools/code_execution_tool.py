@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import subprocess
 import tempfile
 from typing import Any
 
@@ -125,7 +124,7 @@ class CodeExecutionTool(BaseTool):
                 error="" if success else output.get("stderr", "执行失败"),
                 latency_ms=round(latency_ms, 2),
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             latency_ms = (time.time() - t0) * 1000
             return ToolResult(
                 tool_name=self.name,
@@ -178,7 +177,7 @@ class CodeExecutionTool(BaseTool):
                     proc.communicate(),
                     timeout=timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 proc.kill()
                 await proc.wait()
                 raise

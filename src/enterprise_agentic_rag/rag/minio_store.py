@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import logging
 from io import BytesIO
-from typing import Any
 
 from minio import Minio
 from minio.error import S3Error

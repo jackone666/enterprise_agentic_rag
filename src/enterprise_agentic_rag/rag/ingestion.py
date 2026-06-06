@@ -15,13 +15,12 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 from enterprise_agentic_rag.rag.document_loader import load_markdown_files
 from enterprise_agentic_rag.rag.embedding_provider import get_embedding_provider
 from enterprise_agentic_rag.rag.es_keyword_store import ESKeywordStore
-from enterprise_agentic_rag.rag.minio_store import MinIOStore
 from enterprise_agentic_rag.rag.milvus_store import MilvusStore
+from enterprise_agentic_rag.rag.minio_store import MinIOStore
 from enterprise_agentic_rag.rag.splitter import split_documents
 
 
@@ -84,6 +83,7 @@ class IngestionPipeline:
 
         # 3. Two-layer dedup: SHA256 exact + embedding near-duplicate
         import hashlib
+
         from enterprise_agentic_rag.rag.near_dedup import NearDedupIndex, sample_doc_embedding
 
         dedup_index = NearDedupIndex(threshold=0.95)

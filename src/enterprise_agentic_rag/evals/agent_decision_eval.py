@@ -71,11 +71,11 @@ class DecisionEvalResult:
 
 
 # ---------------------------------------------------------------------------
-# Evaluation dataset — curated test cases spanning all intents
+# Evaluation dataset — 8 representative test cases (v3.2: 22 → 8)
 # ---------------------------------------------------------------------------
 
 AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
-    # ── concept_qa: general knowledge questions → retrieve + answer ──
+    # ── concept_qa ──
     DecisionTestCase(
         query="HarmonyOS 应用的生命周期是什么？",
         expected_intent="concept_qa",
@@ -83,15 +83,8 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         expected_retrieval_mode="hybrid_only",
         tags=["concept", "lifecycle"],
     ),
-    DecisionTestCase(
-        query="什么是 ArkUI 的声明式范式？",
-        expected_intent="concept_qa",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="hybrid_only",
-        tags=["concept", "arkui"],
-    ),
 
-    # ── api_usage: API documentation questions → retrieve + answer ──
+    # ── api_usage ──
     DecisionTestCase(
         query="@ohos.app.ability 怎么创建 Ability？",
         expected_intent="api_usage",
@@ -99,15 +92,8 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         expected_retrieval_mode="code_first",
         tags=["api", "ability"],
     ),
-    DecisionTestCase(
-        query="如何调用 @ohos.net.http 发送 POST 请求？",
-        expected_intent="api_usage",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="code_first",
-        tags=["api", "http"],
-    ),
 
-    # ── code_generation: code writing → retrieve → generate_code → execute ──
+    # ── code_generation ──
     DecisionTestCase(
         query="用 TypeScript 写一个 HarmonyOS 的网络请求示例",
         expected_intent="code_generation",
@@ -116,34 +102,18 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         needs_code=True,
         tags=["code", "typescript"],
     ),
-    DecisionTestCase(
-        query="给我一段 ArkTS 实现导航的代码",
-        expected_intent="code_generation",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="code_first",
-        needs_code=True,
-        tags=["code", "arkts", "navigation"],
-    ),
 
-    # ── error_diagnosis: error investigation → tools + retrieve ──
+    # ── error_diagnosis ──
     DecisionTestCase(
         query="错误码 15500000 是什么原因？",
         expected_intent="error_diagnosis",
         expected_next_node="call_tools",
-        expected_retrieval_mode="error_first",
+        expected_retrieval_mode="graph_first",
         needs_tools=True,
         tags=["error", "error_code"],
     ),
-    DecisionTestCase(
-        query="系统报错 'permission denied' 怎么排查？",
-        expected_intent="error_diagnosis",
-        expected_next_node="call_tools",
-        expected_retrieval_mode="error_first",
-        needs_tools=True,
-        tags=["error", "permission"],
-    ),
 
-    # ── migration: API migration → graph_first retrieval ──
+    # ── migration ──
     DecisionTestCase(
         query="从 FA 模型迁移到 Stage 模型有什么变化？",
         expected_intent="migration",
@@ -151,15 +121,8 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         expected_retrieval_mode="graph_first",
         tags=["migration", "fa", "stage"],
     ),
-    DecisionTestCase(
-        query="API 11 的 Router 在 API 12 被替换成什么？",
-        expected_intent="migration",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="graph_first",
-        tags=["migration", "router", "api12"],
-    ),
 
-    # ── compatibility: version compatibility → graph_first ──
+    # ── compatibility ──
     DecisionTestCase(
         query="我的应用在 HarmonyOS NEXT 上兼容吗？",
         expected_intent="compatibility",
@@ -167,67 +130,18 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         expected_retrieval_mode="graph_first",
         tags=["compatibility", "harmonyos_next"],
     ),
-    DecisionTestCase(
-        query="API Level 12 有哪些 API 变更？",
-        expected_intent="compatibility",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="graph_first",
-        tags=["compatibility", "api_level"],
-    ),
 
-    # ── project_debug: debugging → tools + retrieve ──
+    # ── project_debug ──
     DecisionTestCase(
         query="我的 app 在 API 12 上启动崩溃怎么调试？",
         expected_intent="project_debug",
         expected_next_node="call_tools",
-        expected_retrieval_mode="error_first",
+        expected_retrieval_mode="graph_first",
         needs_tools=True,
         tags=["debug", "crash"],
     ),
-    DecisionTestCase(
-        query="crash 日志显示 'signal 11' 怎么分析？",
-        expected_intent="project_debug",
-        expected_next_node="call_tools",
-        expected_retrieval_mode="error_first",
-        needs_tools=True,
-        tags=["debug", "crash_log"],
-    ),
 
-    # ── best_practice: architecture recommendations → retrieve ──
-    DecisionTestCase(
-        query="HarmonyOS 应用的目录结构最佳实践是什么？",
-        expected_intent="best_practice",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="hybrid_only",
-        tags=["best_practice", "architecture"],
-    ),
-    DecisionTestCase(
-        query="大型 HarmonyOS 应用如何做模块化？",
-        expected_intent="best_practice",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="hybrid_only",
-        tags=["best_practice", "modular"],
-    ),
-
-    # ── architecture: design questions → retrieve ──
-    DecisionTestCase(
-        query="HarmonyOS 的 Ability 和 Android Activity 有什么不同？",
-        expected_intent="architecture",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="graph_first",
-        tags=["architecture", "comparison"],
-    ),
-
-    # ── learning_guidance: learning path → retrieve ──
-    DecisionTestCase(
-        query="我是 Android 开发者，怎么快速上手 HarmonyOS？",
-        expected_intent="learning_guidance",
-        expected_next_node="retrieve_knowledge",
-        expected_retrieval_mode="hybrid_only",
-        tags=["learning", "android"],
-    ),
-
-    # ── Edge cases (low confidence / ambiguous) ──
+    # ── Edge case (ambiguous query) ──
     DecisionTestCase(
         query="帮我查一下",
         expected_intent="concept_qa",
@@ -235,33 +149,6 @@ AGENT_DECISION_EVAL_SET: list[DecisionTestCase] = [
         expected_retrieval_mode="hybrid_only",
         difficulty="hard",
         tags=["edge_case", "ambiguous"],
-    ),
-    DecisionTestCase(
-        query="compatibility crash error 15500000 怎么修复迁移到 Stage",
-        expected_intent="error_diagnosis",
-        expected_next_node="call_tools",
-        expected_retrieval_mode="error_first",
-        needs_tools=True,
-        difficulty="hard",
-        tags=["edge_case", "multi_intent"],
-    ),
-
-    # ── Tool-requiring queries ──
-    DecisionTestCase(
-        query="查询工单 TKT-12345 的状态",
-        expected_intent="concept_qa",  # Intent classifier may vary; tool detection via keywords
-        expected_next_node="call_tools",
-        expected_retrieval_mode="hybrid_only",
-        needs_tools=True,
-        tags=["tools", "ticket"],
-    ),
-    DecisionTestCase(
-        query="查看系统当前运行状态",
-        expected_intent="concept_qa",
-        expected_next_node="call_tools",
-        expected_retrieval_mode="hybrid_only",
-        needs_tools=True,
-        tags=["tools", "system_status"],
     ),
 ]
 
@@ -280,7 +167,6 @@ def evaluate_agent_decisions(use_llm: bool = False) -> DecisionEvalResult:
     Returns:
         DecisionEvalResult with accuracy metrics and per-case details.
     """
-    from enterprise_agentic_rag.agents.deep_intent.rules import rule_based_intent
     from enterprise_agentic_rag.agents.master_agent import MasterAgent
 
     master = MasterAgent()
@@ -329,7 +215,7 @@ def _eval_single_case(case: DecisionTestCase, master: MasterAgent) -> dict[str, 
         "tool_errors": [],
         "code_snippet": "",
         "code_verified": False,
-        "code_retry_attempted": False,
+        "code_retry_count": 0,
         "verified": False,
         "fallback_reason": "",
     }

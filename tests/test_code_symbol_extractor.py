@@ -1,14 +1,11 @@
 """Tests for code symbol extraction — AST and regex symbol extraction from code blocks."""
 
-import pytest
 
 from enterprise_agentic_rag.rag.graph.code_symbol_extractor import (
-    CodeBlock,
-    CodeSymbol,
+    chunk_has_code,
     detect_code_density,
     extract_code_blocks,
     extract_symbols_from_code,
-    chunk_has_code,
 )
 
 

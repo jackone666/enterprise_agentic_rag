@@ -2,9 +2,8 @@
 
 import pytest
 
-from enterprise_agentic_rag.agents.verifier_agent import verify_answer, verify_answer_async, _verify_rules
+from enterprise_agentic_rag.agents.verifier_agent import _verify_rules, verify_answer, verify_answer_async
 from enterprise_agentic_rag.llm.base import LLMResponse
-
 
 # ===========================================================================
 # TestVerifierRules

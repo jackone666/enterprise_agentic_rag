@@ -8,9 +8,9 @@ No online API calls. Pure regex + keyword matching.
 
 from __future__ import annotations
 
-import re
 import logging
-from dataclasses import dataclass, field
+import re
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -185,8 +185,8 @@ def extract_entities_from_chunk(
     if settings.code_analysis.enable_ast_parsing:
         try:
             from enterprise_agentic_rag.rag.graph.code_symbol_extractor import (
-                extract_code_symbols_from_chunk,
                 extract_code_blocks,
+                extract_code_symbols_from_chunk,
             )
 
             # Check if chunk has code blocks

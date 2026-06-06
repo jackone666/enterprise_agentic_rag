@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import Any
 
 from enterprise_agentic_rag.recovery.fallback_policy import (
-    FallbackDecision,
     FallbackPolicy,
     FallbackType,
     RecoveryAction,

@@ -11,8 +11,8 @@ so decide() always falls through to the rule-based chain.
 """
 
 import pytest
-from enterprise_agentic_rag.agents.master_agent import MasterAgent, MasterDecision
 
+from enterprise_agentic_rag.agents.master_agent import MasterAgent, MasterDecision
 
 # ===========================================================================
 # Fixtures
@@ -43,7 +43,7 @@ def _state(**overrides) -> dict:
         "verified": False,
         "code_snippet": "",
         "code_verified": False,
-        "code_retry_attempted": False,
+        "code_retry_count": 0,
     }
     base.update(overrides)
     return base
@@ -141,12 +141,12 @@ class TestMasterAgentRuleDecisions:
         assert decision.next_node == "generate_answer"
 
     async def test_after_code_execution_failure_retry(self, master):
-        state = _state(last_agent_step="execute_code", code_verified=False, code_retry_attempted=False)
+        state = _state(last_agent_step="execute_code", code_verified=False, code_retry_count=0)
         decision = await master.decide(state)
         assert decision.next_node == "generate_code"
 
     async def test_after_code_execution_failure_exhausted(self, master):
-        state = _state(last_agent_step="execute_code", code_verified=False, code_retry_attempted=True)
+        state = _state(last_agent_step="execute_code", code_verified=False, code_retry_count=1)
         decision = await master.decide(state)
         assert decision.next_node == "finalize_answer"
 

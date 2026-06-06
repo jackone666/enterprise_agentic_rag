@@ -37,7 +37,6 @@ import asyncio
 from enterprise_agentic_rag.storage.database import DatabaseManager
 from enterprise_agentic_rag.storage.repositories import get_user, upsert_user
 
-
 DEMO_USERS = [
     {
         "user_id": "u001",

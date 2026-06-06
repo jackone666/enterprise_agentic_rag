@@ -46,7 +46,7 @@ def print_trace_summary(trace: dict) -> None:
     if degraded_from or degraded_to:
         print(f"  ⚠  DEGRADED:       {degraded_from} → {degraded_to}")
 
-    print(f"\n  --- Hits ---")
+    print("\n  --- Hits ---")
     print(f"  keyword_hits:    {trace.get('keyword_hit_count', 0)}")
     print(f"  vector_hits:     {trace.get('vector_hit_count', 0)}")
     print(f"  graph_hits:      {trace.get('graph_hit_count', 0)}")
@@ -54,27 +54,27 @@ def print_trace_summary(trace: dict) -> None:
     print(f"  reranked_count:  {trace.get('reranked_count', 0)}")
     print(f"  graph_paths:     {trace.get('graph_paths_count', 0)}")
 
-    print(f"\n  --- Timing (ms) ---")
+    print("\n  --- Timing (ms) ---")
     print(f"  keyword:         {trace.get('keyword_latency_ms', 0):.1f}")
     print(f"  vector:          {trace.get('vector_latency_ms', 0):.1f}")
     print(f"  graph:           {trace.get('graph_latency_ms', 0):.1f}")
     print(f"  fusion:          {trace.get('fusion_latency_ms', 0):.1f}")
     print(f"  total:           {trace.get('total_latency_ms', 0):.1f}")
 
-    print(f"\n  --- Fusion ---")
+    print("\n  --- Fusion ---")
     print(f"  method:          {trace.get('fusion_method', 'N/A')}")
     print(f"  weights:         {trace.get('fusion_weights', {})}")
 
     expanded = trace.get("expanded_query", "")
     if expanded:
-        print(f"\n  --- Query Expansion ---")
+        print("\n  --- Query Expansion ---")
         print(f"  original:        {trace.get('original_query', '')[:80]}")
         print(f"  expanded:        {expanded[:80]}")
         print(f"  terms:           {trace.get('expansion_terms', [])}")
 
     errors = trace.get("errors", [])
     if errors:
-        print(f"\n  --- Errors ---")
+        print("\n  --- Errors ---")
         for e in errors:
             print(f"  ✗ {e}")
 

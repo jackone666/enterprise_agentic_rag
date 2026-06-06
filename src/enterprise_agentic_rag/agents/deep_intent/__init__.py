@@ -10,23 +10,23 @@ Pipeline:
 The DeepIntentNode orchestrates this pipeline with automatic fallback.
 """
 
-from enterprise_agentic_rag.agents.deep_intent.schema import (
-    DeepIntentResult,
-    DeepIntentEntities,
-    DeepIntentConstraints,
-    RetrievalPlanConfig,
-    IntentCategory,
-    RetrievalMode,
-    AnswerStyle,
-    Difficulty,
-    RiskLevel,
-)
-from enterprise_agentic_rag.agents.deep_intent.rules import rule_based_intent, RuleIntentResult
+from enterprise_agentic_rag.agents.deep_intent.confidence import calculate_confidence
 from enterprise_agentic_rag.agents.deep_intent.entity_extractor import extract_entities
 from enterprise_agentic_rag.agents.deep_intent.llm_classifier import llm_deep_intent_classifier
-from enterprise_agentic_rag.agents.deep_intent.validator import validate_deep_intent
-from enterprise_agentic_rag.agents.deep_intent.confidence import calculate_confidence
 from enterprise_agentic_rag.agents.deep_intent.node import DeepIntentNode, recognize_deep_intent
+from enterprise_agentic_rag.agents.deep_intent.rules import RuleIntentResult, rule_based_intent
+from enterprise_agentic_rag.agents.deep_intent.schema import (
+    AnswerStyle,
+    DeepIntentConstraints,
+    DeepIntentEntities,
+    DeepIntentResult,
+    Difficulty,
+    IntentCategory,
+    RetrievalMode,
+    RetrievalPlanConfig,
+    RiskLevel,
+)
+from enterprise_agentic_rag.agents.deep_intent.validator import validate_deep_intent
 
 __all__ = [
     "DeepIntentResult",

@@ -118,15 +118,9 @@ class Tracer:
             self.logger.write_event(event_to_dict(start_evt))
             self.logger.write_event(event_to_dict(end_evt))
 
-            # --- Append to state ---
-            node_events = list(state.get("node_events", []))
-            node_events.append(event_to_dict(start_evt))
-            node_events.append(event_to_dict(end_evt))
-
             if not success:
                 output["error"] = output.get("error", error_msg)
 
-            output["node_events"] = node_events
             return output
 
         # Preserve metadata for debugging

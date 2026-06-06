@@ -52,7 +52,7 @@ print(f"Milvus 写入: {report.milvus_upserted}")
 print(f"耗时: {report.duration_ms}ms")
 
 if report.errors:
-    print(f"\n⚠ 警告:")
+    print("\n⚠ 警告:")
     for e in report.errors:
         print(f"  - {e}")
 else:

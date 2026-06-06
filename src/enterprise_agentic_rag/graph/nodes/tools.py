@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from enterprise_agentic_rag.agents.master_agent import MasterAgent
 from enterprise_agentic_rag.agents.tool_agent import call_tools
 from enterprise_agentic_rag.graph.dependencies import master_agent, tracer
 from enterprise_agentic_rag.graph.state import AgentState
@@ -65,7 +64,6 @@ async def call_tools_node(state: AgentState) -> dict[str, Any]:
         "tool_calls": tool_calls,
         "tool_results": serialised_results,
         "tool_errors": tool_errors,
-        "pending_tool_confirmations": pending,
         "tool_audit_logs": audit_logs,
         "last_worker": "tool_agent",
         "last_agent_step": "call_tools",

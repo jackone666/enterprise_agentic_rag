@@ -11,7 +11,7 @@ import time
 from typing import Any
 
 from enterprise_agentic_rag.tools.base import BaseTool, ToolResult
-from enterprise_agentic_rag.tools.policies import ToolTier, evaluate_policy
+from enterprise_agentic_rag.tools.policies import evaluate_policy
 from enterprise_agentic_rag.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ class ToolExecutor:
                 result.latency_ms = (time.monotonic() - t0) * 1000
                 result.tool_name = tool.name
                 return result
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if attempt < tool.max_retries:
                     continue
                 return ToolResult(
@@ -131,6 +131,7 @@ class ToolExecutor:
     ) -> None:
         try:
             import asyncio as aio
+
             from enterprise_agentic_rag.storage.repositories import Repository
 
             repo = Repository()

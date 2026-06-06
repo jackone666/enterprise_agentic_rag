@@ -6,7 +6,9 @@ Usage: python scripts/import_eval_cases.py [path_to_jsonl]
 
 from __future__ import annotations
 
-import json, os, sys
+import json
+import os
+import sys
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parents[1]
@@ -19,6 +21,7 @@ if _env_file.exists():
 sys.path.insert(0, str(_project_root))
 
 import asyncio
+
 from enterprise_agentic_rag.storage.database import DatabaseManager
 from enterprise_agentic_rag.storage.repositories import insert_eval_case
 

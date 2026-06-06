@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from enterprise_agentic_rag.rag.unified_schemas import UnifiedToolInput, UnifiedToolOutput
+from enterprise_agentic_rag.rag.unified_schemas import UnifiedToolOutput
 
 
 class KeywordRetrieverTool:

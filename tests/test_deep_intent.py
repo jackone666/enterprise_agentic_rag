@@ -8,19 +8,14 @@ Covers:
 - The 7 required test cases from the spec (Section 17)
 """
 
-import pytest
-from enterprise_agentic_rag.agents.deep_intent.schema import (
-    DeepIntentResult,
-    DeepIntentEntities,
-    IntentCategory,
-    RetrievalMode,
-    AnswerStyle,
-)
-from enterprise_agentic_rag.agents.deep_intent.rules import rule_based_intent, RuleIntentResult
-from enterprise_agentic_rag.agents.deep_intent.entity_extractor import extract_entities, extract_entities_typed
-from enterprise_agentic_rag.agents.deep_intent.validator import validate_deep_intent
 from enterprise_agentic_rag.agents.deep_intent.confidence import calculate_confidence
-
+from enterprise_agentic_rag.agents.deep_intent.entity_extractor import extract_entities, extract_entities_typed
+from enterprise_agentic_rag.agents.deep_intent.rules import RuleIntentResult, rule_based_intent
+from enterprise_agentic_rag.agents.deep_intent.schema import (
+    DeepIntentEntities,
+    DeepIntentResult,
+)
+from enterprise_agentic_rag.agents.deep_intent.validator import validate_deep_intent
 
 # ===========================================================================
 # Rule-based intent tests

@@ -6,7 +6,8 @@ Every event has: trace_id, session_id, user_id, event_type, timestamp.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
+from datetime import UTC
 from typing import Any
 
 
@@ -131,7 +132,7 @@ def event_to_dict(event: BaseEvent) -> dict[str, Any]:
     d = asdict(event)
     # Make timestamps readable
     if "timestamp" in d:
-        from datetime import datetime, timezone
+        from datetime import datetime
         ts = d["timestamp"]
-        d["timestamp_iso"] = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        d["timestamp_iso"] = datetime.fromtimestamp(ts, tz=UTC).isoformat()
     return d

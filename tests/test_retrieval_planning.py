@@ -6,7 +6,6 @@ Covers:
 
 from enterprise_agentic_rag.rag.retrieval_router import DynamicWeights
 
-
 # ===========================================================================
 # DynamicWeights tests
 # ===========================================================================

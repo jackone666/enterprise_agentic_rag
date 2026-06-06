@@ -53,7 +53,6 @@ async def deep_intent_recognition_node(state: AgentState) -> dict[str, Any]:
                 "original_query": query,
             },
             "deep_intent_confidence": result.get("confidence", 0.0),
-            "retrieval_plan_config": result.get("retrieval_plan", {}),
             "last_worker": "intent_analyzer",
             "last_agent_step": "recognize_intent",
         }
@@ -80,7 +79,6 @@ async def deep_intent_recognition_node(state: AgentState) -> dict[str, Any]:
             "original_query": query,
         }
         fallback["deep_intent_confidence"] = 0.3
-        fallback["retrieval_plan_config"] = {"mode": "hybrid_only"}
         fallback["last_worker"] = "intent_analyzer"
         fallback["last_agent_step"] = "recognize_intent"
         return fallback

@@ -10,7 +10,7 @@ from typing import Any
 
 from enterprise_agentic_rag.context.citation_manager import Citation, CitationManager
 from enterprise_agentic_rag.context.prompt_builder import PromptBuilder
-from enterprise_agentic_rag.context.token_budget import BudgetAllocation, TokenBudget
+from enterprise_agentic_rag.context.token_budget import TokenBudget
 
 
 def _build_graph_path_summaries(docs: list[dict[str, Any]]) -> str:

@@ -60,8 +60,8 @@ import json
 import os
 import sys
 import time
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # Project root resolution (works from any CWD)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -81,7 +81,7 @@ def acquire_lock(lock_file: Path) -> bool:
         fp.flush()
         # Keep fp open to hold the lock
         return True
-    except (IOError, OSError):
+    except OSError:
         fp.close()
         return False
 

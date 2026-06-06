@@ -402,7 +402,7 @@ class ThresholdCalibrator:
             return
 
         try:
-            with open(_CALIBRATION_PATH, "r", encoding="utf-8") as f:
+            with open(_CALIBRATION_PATH, encoding="utf-8") as f:
                 data = json.load(f)
 
             t = data.get("thresholds", {})

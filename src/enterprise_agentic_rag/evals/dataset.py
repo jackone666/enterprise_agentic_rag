@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +37,7 @@ class FailedCase:
     final_answer: str = ""
     fallback_reason: str = ""
     source: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -72,8 +72,10 @@ class EvalDataset:
     def _load_pg(self) -> list[EvalCase]:
         try:
             import asyncio
-            from enterprise_agentic_rag.storage.database import get_db_manager
+
             from sqlalchemy import text
+
+            from enterprise_agentic_rag.storage.database import get_db_manager
             dbm = get_db_manager()
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -156,6 +158,7 @@ class EvalDataset:
     def _save_pg(self, case: FailedCase) -> bool:
         try:
             import asyncio
+
             from enterprise_agentic_rag.storage.repositories import Repository
             repo = Repository()
             loop = asyncio.get_event_loop()
@@ -177,8 +180,10 @@ class EvalDataset:
         # Try PG first
         try:
             import asyncio
-            from enterprise_agentic_rag.storage.database import get_db_manager
+
             from sqlalchemy import text
+
+            from enterprise_agentic_rag.storage.database import get_db_manager
             dbm = get_db_manager()
             loop = asyncio.get_event_loop()
             if not loop.is_running() and loop.run_until_complete(dbm.check_connection()):

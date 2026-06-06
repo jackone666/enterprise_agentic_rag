@@ -154,8 +154,8 @@ def validate_deep_intent(data: dict[str, Any]) -> DeepIntentResult:
         logger.info("Deep intent validation corrections: %s", corrections)
 
     from enterprise_agentic_rag.agents.deep_intent.schema import (
-        DeepIntentEntities,
         DeepIntentConstraints,
+        DeepIntentEntities,
         RetrievalPlanConfig,
     )
 

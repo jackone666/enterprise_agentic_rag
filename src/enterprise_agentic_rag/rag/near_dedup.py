@@ -72,6 +72,7 @@ class NearDedupIndex:
         if self._redis is None and self._redis_available is not False:
             try:
                 import redis as redis_lib
+
                 from enterprise_agentic_rag.config.settings import get_settings
 
                 s = get_settings()

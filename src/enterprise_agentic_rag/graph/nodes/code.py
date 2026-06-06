@@ -2,7 +2,7 @@
 
 The code path is opt-in — only entered when the master agent decides
 the request is a ``code_generation`` intent. ``execute_code`` runs the
-snippet in a security-gated sandbox and sets ``code_retry_attempted=True``
+snippet in a security-gated sandbox and increments ``code_retry_count``
 to break the routing loop if execution fails more than once.
 """
 
@@ -16,10 +16,7 @@ from enterprise_agentic_rag.graph.state import AgentState
 
 
 async def generate_code_node(state: AgentState) -> dict[str, Any]:
-    """Generate a code snippet based on retrieved documents.
-
-    Passes through code_retry_attempted to preserve routing state.
-    """
+    """Generate a code snippet based on retrieved documents."""
     query = state.get("query", "")
     docs = state.get("retrieved_docs", [])
 
@@ -28,8 +25,7 @@ async def generate_code_node(state: AgentState) -> dict[str, Any]:
     return {
         "code_snippet": result.get("code_snippet", ""),
         "code_language": result.get("language", "typescript"),
-        "code_retry_attempted": state.get("code_retry_attempted", False),
-        "last_worker": "code_agent",
+        "last_worker": "code_generator",
         "last_agent_step": "generate_code",
     }
 
@@ -38,18 +34,17 @@ async def execute_code_node(state: AgentState) -> dict[str, Any]:
     """Execute the generated code in the sandbox.
 
     Uses CodeExecutionTool for security-gated execution.
-    Sets code_retry_attempted=True to enable routing gate (avoids infinite loop).
+    Increments code_retry_count to enable routing gate (avoids infinite loop).
     """
     code = state.get("code_snippet", "")
     language = state.get("code_language", "typescript")
-    already_attempted = state.get("code_retry_attempted", False)
 
     if not code or not code.strip():
         return {
             "code_execution_result": {"exit_code": -1, "stderr": "无代码可执行", "stdout": ""},
             "code_verified": False,
-            "code_retry_attempted": True,
-            "last_worker": "code_agent",
+            "code_retry_count": (state.get("code_retry_count", 0)) + 1,
+            "last_worker": "code_executor",
             "last_agent_step": "execute_code",
         }
 
@@ -82,7 +77,7 @@ async def execute_code_node(state: AgentState) -> dict[str, Any]:
     return {
         "code_execution_result": exec_result,
         "code_verified": code_verified,
-        "code_retry_attempted": True,
-        "last_worker": "code_agent",
+        "code_retry_count": (state.get("code_retry_count", 0)) + 1,
+        "last_worker": "code_executor",
         "last_agent_step": "execute_code",
     }

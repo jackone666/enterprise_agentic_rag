@@ -91,7 +91,6 @@ def _generate_template(
     for doc in retrieved_docs:
         content = doc.get("content", "")
         # Extract fenced code blocks
-        import re
         fence_pattern = re.compile(r"```(\w*)\s*\n(.*?)```", re.DOTALL)
         for m in fence_pattern.finditer(content):
             lang = m.group(1).strip().lower() or "text"

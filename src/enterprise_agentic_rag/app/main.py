@@ -28,16 +28,16 @@ if _env.exists():
         if _k and _k not in os.environ:
             os.environ[_k] = _v
 
-from fastapi import FastAPI, Response, UploadFile, File, Form
+import asyncio
+import json
+
+from fastapi import FastAPI, File, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-import asyncio
-import json
-
-from enterprise_agentic_rag.evals.online_feedback import FeedbackHandler, FeedbackRecord
 from enterprise_agentic_rag.config.settings import get_settings
+from enterprise_agentic_rag.evals.online_feedback import FeedbackHandler, FeedbackRecord
 from enterprise_agentic_rag.graph.workflow import build_workflow
 from enterprise_agentic_rag.observability.metrics import get_metrics_collector, get_prometheus_metrics
 from enterprise_agentic_rag.observability.tracer import get_tracer
@@ -121,11 +121,8 @@ class ChatResponse(BaseModel):
     retry_history: list[dict[str, Any]] = Field(default_factory=list)
     # Observability
     trace_id: str = Field(default="")
-    node_events_count: int = Field(default=0)
-    node_events: list[dict[str, Any]] = Field(default_factory=list)
     retrieval_events: list[dict[str, Any]] = Field(default_factory=list)
     verification_events: list[dict[str, Any]] = Field(default_factory=list)
-    metrics_snapshot: dict[str, Any] = Field(default_factory=dict)
     # Evaluation
     auto_captured: bool = Field(default=False)
     eval_result: dict[str, Any] = Field(default_factory=dict)
@@ -201,7 +198,6 @@ async def chat(request: ChatRequest) -> ChatResponse:
         "user_id": request.user_id,
         "session_id": request.session_id,
         "trace_id": trace_id,
-        "node_events": [],
         "tool_events": [],
         "retrieval_events": [],
         "verification_events": [],
@@ -212,7 +208,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             _workflow.ainvoke(initial_state),
             timeout=settings.app.request_timeout_seconds,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         result = {
             **initial_state,
             "final_answer": "请求处理超时，已为您转人工处理。",
@@ -246,7 +242,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
     # Submit to async evaluator (non-blocking) — bad cases auto-persist to PG
     eval_result = {}
     try:
-        from enterprise_agentic_rag.evals.async_evaluator import get_async_evaluator, EvalJob
+        from enterprise_agentic_rag.evals.async_evaluator import EvalJob, get_async_evaluator
         async_eval = get_async_evaluator()
         async_eval.submit(EvalJob(
             query=request.query,
@@ -283,11 +279,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         retry_count=result.get("retry_count", {}),
         retry_history=result.get("retry_history", []),
         trace_id=result.get("trace_id", trace_id),
-        node_events_count=len(result.get("node_events", [])),
-        node_events=result.get("node_events", []),
         retrieval_events=result.get("retrieval_events", []),
         verification_events=result.get("verification_events", []),
-        metrics_snapshot=result.get("metrics_snapshot", {}),
         auto_captured=auto_captured,
         eval_result=eval_result,
         pipeline_trace=pipeline_trace,
@@ -321,7 +314,6 @@ async def chat_stream(request: ChatRequest):
             "user_id": request.user_id,
             "session_id": request.session_id,
             "trace_id": trace_id,
-            "node_events": [],
             "tool_events": [],
             "retrieval_events": [],
             "verification_events": [],
@@ -333,7 +325,6 @@ async def chat_stream(request: ChatRequest):
 
         try:
             result: dict[str, Any] = initial_state
-            seen_node_ends = 0
             prev_answer_len = 0
             prev_thinking_len = 0
 
@@ -341,17 +332,6 @@ async def chat_stream(request: ChatRequest):
                 async for state_update in _workflow.astream(initial_state, stream_mode="values"):
                     if isinstance(state_update, dict):
                         result = state_update
-
-                        # Stream node completion events
-                        node_events = result.get("node_events", [])
-                        new_ends = [
-                            evt for evt in node_events[seen_node_ends:]
-                            if evt.get("event_type") == "node_end"
-                        ]
-                        seen_node_ends = len(node_events)
-                        for evt in new_ends:
-                            name = evt.get("node_name", "")
-                            yield f"data: {json.dumps({'type': 'node_end', 'node': name, 'data': {'node': name, 'latency_ms': evt.get('latency_ms', 0), 'success': evt.get('success', True)}}, ensure_ascii=False)}\n\n"
 
                         # Stream thinking (CoT) when deep thinking is enabled
                         if request.deep_thinking:
@@ -445,38 +425,10 @@ async def feedback(request: FeedbackRequest) -> FeedbackResponse:
 
 def _build_pipeline_trace(result: dict[str, Any]) -> dict[str, Any]:
     """Build structured pipeline trace for frontend visualization."""
-    node_events = result.get("node_events", [])
-    steps: dict[str, Any] = {}
-
-    for evt in node_events:
-        if evt.get("event_type") != "node_end":
-            continue
-        name = evt.get("node_name", "")
-        steps[name] = {
-            "name": name,
-            "latency_ms": evt.get("latency_ms", 0),
-            "success": evt.get("success", True),
-            "error": evt.get("error", ""),
-        }
-
-    pipeline_order = [
-        "load_memory", "check_permission", "deep_intent_recognition", "master_agent",
-        "retrieve_knowledge", "call_tools", "rewrite_query",
-        "build_context", "generate_code", "execute_code", "generate_answer", "verify_answer",
-        "finalize_answer", "save_memory",
-    ]
-    trace_steps = []
-    total_ms = 0.0
-    for name in pipeline_order:
-        if name in steps:
-            s = steps[name]
-            total_ms += s["latency_ms"]
-            trace_steps.append(s)
-
     return {
-        "total_latency_ms": round(total_ms, 2),
-        "node_count": len(trace_steps),
-        "steps": trace_steps,
+        "total_latency_ms": 0.0,
+        "node_count": 0,
+        "steps": [],
         "backend": result.get("retrieval_backend", "keyword"),
     }
 
@@ -554,8 +506,8 @@ async def admin_list_docs() -> dict[str, Any]:
 @app.post("/admin/upload")
 async def admin_upload(file: UploadFile = File(...)) -> dict[str, Any]:
     """Upload a document file → MinIO → chunk → embed → Milvus."""
-    import tempfile, os
-    from enterprise_agentic_rag.rag.ingestion import IngestionPipeline
+    import os
+    import tempfile
 
     # Save uploaded file to temp location
     suffix = os.path.splitext(file.filename or "upload.txt")[1] or ".txt"
@@ -572,10 +524,10 @@ async def admin_upload(file: UploadFile = File(...)) -> dict[str, Any]:
         minio_result = store.upload_document(tmp_path, object_name=obj_name)
 
         # Ingest: chunk + embed + Milvus
-        from enterprise_agentic_rag.rag.splitter import split_text
         from enterprise_agentic_rag.rag.embedding_provider import get_embedding_provider
         from enterprise_agentic_rag.rag.milvus_store import MilvusStore
         from enterprise_agentic_rag.rag.preprocessing import preprocess_document
+        from enterprise_agentic_rag.rag.splitter import split_text
 
         text = content.decode("utf-8", errors="replace")
         meta = preprocess_document(text)
@@ -609,8 +561,9 @@ async def admin_upload(file: UploadFile = File(...)) -> dict[str, Any]:
 @app.get("/admin/bad-cases")
 async def admin_bad_cases(limit: int = 50, source: str = "") -> dict[str, Any]:
     """Query bad cases + feedback from PostgreSQL for monitoring dashboard."""
-    from enterprise_agentic_rag.storage.database import get_db_manager
     from sqlalchemy import text
+
+    from enterprise_agentic_rag.storage.database import get_db_manager
 
     dbm = get_db_manager()
     if not await dbm.check_connection():

@@ -36,6 +36,7 @@ class CheckpointStore:
         if self._redis is None and self._redis_available is not False:
             try:
                 import redis.asyncio as aioredis
+
                 from enterprise_agentic_rag.config.settings import get_settings
                 s = get_settings()
                 self._redis = aioredis.from_url(s.redis.connection_url, decode_responses=True)

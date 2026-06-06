@@ -12,7 +12,6 @@ Outputs:
 from __future__ import annotations
 
 import asyncio
-import sys
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -209,7 +208,7 @@ def main() -> None:
 
         if result.rag_metrics:
             rm = result.rag_metrics
-            print(f"\n--- RAG 指标 ---")
+            print("\n--- RAG 指标 ---")
             print(f"hit@{evaluator.rag_evaluator.k}: {rm.hit_at_k:.1%}")
             print(f"recall@{evaluator.rag_evaluator.k}: {rm.recall_at_k:.1%}")
             print(f"MRR: {rm.mrr:.4f}")
@@ -217,7 +216,7 @@ def main() -> None:
 
         if result.answer_metrics:
             am = result.answer_metrics
-            print(f"\n--- 答案指标 ---")
+            print("\n--- 答案指标 ---")
             print(f"引用率: {am.citation_present_rate:.1%}")
             print(f"依据性: {am.groundedness_rate:.1%}")
             print(f"相关性: {am.answer_relevance_rate:.1%}")

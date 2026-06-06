@@ -6,7 +6,9 @@ Usage: python scripts/export_failed_cases.py [output_path]
 
 from __future__ import annotations
 
-import json, os, sys
+import json
+import os
+import sys
 from pathlib import Path
 
 _project_root = Path(__file__).resolve().parents[1]
@@ -21,8 +23,10 @@ sys.path.insert(0, str(_project_root))
 OUTPUT = sys.argv[1] if len(sys.argv) > 1 else str(_project_root / "data" / "eval" / "exported_failed_cases.jsonl")
 
 import asyncio
-from enterprise_agentic_rag.storage.database import DatabaseManager
+
 from sqlalchemy import text
+
+from enterprise_agentic_rag.storage.database import DatabaseManager
 
 
 async def main():

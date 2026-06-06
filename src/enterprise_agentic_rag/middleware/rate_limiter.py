@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 # Lua script for atomic sliding window rate limit
 _LUA_SLIDING_WINDOW = """
@@ -40,6 +39,7 @@ class RateLimiter:
         if self._redis is None and self._available is not False:
             try:
                 import redis
+
                 from enterprise_agentic_rag.config.settings import get_settings
                 s = get_settings()
                 pool = redis.ConnectionPool.from_url(

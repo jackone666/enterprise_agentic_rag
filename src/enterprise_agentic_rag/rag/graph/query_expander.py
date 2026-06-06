@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from enterprise_agentic_rag.rag.graph.graph_schema import Candidate, GraphPath
+from enterprise_agentic_rag.rag.graph.graph_schema import Candidate
 
 logger = logging.getLogger(__name__)
 

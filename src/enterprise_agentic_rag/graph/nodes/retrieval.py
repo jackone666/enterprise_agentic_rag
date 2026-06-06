@@ -16,9 +16,9 @@ import logging
 import time
 from typing import Any
 
+from enterprise_agentic_rag.graph.cache import cache_scope
 from enterprise_agentic_rag.graph.dependencies import recovery, retriever, tracer
 from enterprise_agentic_rag.graph.state import AgentState
-from enterprise_agentic_rag.graph.cache import cache_scope
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
 
     # ── Determine retrieval mode from deep_intent ──
     deep_intent = state.get("deep_intent", {})
-    retrieval_plan = state.get("retrieval_plan_config", deep_intent.get("retrieval_plan", {}))
+    retrieval_plan = deep_intent.get("retrieval_plan", {})
     mode = retrieval_plan.get("mode", "hybrid_only") if isinstance(retrieval_plan, dict) else "hybrid_only"
     primary_intent = deep_intent.get("primary_intent", "concept_qa")
     entities = deep_intent.get("entities", {})
@@ -150,32 +150,14 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
             workflow_result["selected_evidence"] = []
 
     # ── Tier 4: External search augmentation ──
-    external_results: list[dict[str, Any]] = []
-    try:
-        from enterprise_agentic_rag.rag.external.external_retriever import ExternalRetriever
-
-        ext = ExternalRetriever()
-        if ext.available:
-            external_results = await ext.search(query, top_k=3)
-            if external_results:
-                logger.info("External search returned %d results", len(external_results))
-    except Exception as exc:
-        logger.debug("External search skipped: %s", exc)
+    # (external search disabled — moved to retrieval agent layer in v3.2)
 
     # ── Assemble results ──
     evidence = workflow_result.get("selected_evidence", [])
     reranked = workflow_result.get("reranked_results", evidence)
-    merged = workflow_result.get("merged_results", evidence)
-
-    graph_paths: list[dict[str, Any]] = []
-    for doc in evidence:
-        paths = doc.get("graph_paths", [])
-        if paths:
-            graph_paths.extend(paths)
 
     latency_ms = (time.time() - t0) * 1000
     top_score = max((r.get("score", 0) for r in evidence), default=0.0)
-    degraded = workflow_result.get("degraded", bool(errors))
 
     tracer.record_retrieval_event(
         dict(state),
@@ -192,18 +174,7 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
         "query_analysis": state.get("query_analysis", {}),
         "retrieval_plan": retrieval_plan,
         "retrieval_mode": mode,
-        "graph_paths": graph_paths,
-        "retrieval_trace": {
-            "mode": mode,
-            "degraded": degraded,
-            "workflow_latency_ms": workflow_result.get("total_latency_ms", latency_ms),
-            "total_latency_ms": round(latency_ms, 2),
-        },
-        "degraded_from": mode if degraded else "",
-        "degraded_to": "hybrid_only" if degraded else "",
         "retrieval_errors": errors,
-        "external_search_results": external_results,
-        "external_search_used": len(external_results) > 0,
         "last_worker": "retrieval_service",
         "last_agent_step": "retrieve",
     }
@@ -217,9 +188,6 @@ async def retrieve_knowledge(state: AgentState) -> dict[str, Any]:
                     "retrieved_docs": evidence,
                     "reranked_docs": reranked,
                     "retrieval_mode": mode,
-                    "retrieval_plan": retrieval_plan,
-                    "degraded_from": result_state["degraded_from"],
-                    "degraded_to": result_state["degraded_to"],
                     "retrieval_errors": errors,
                 }
                 asyncio.ensure_future(cache.set(cache_query, cacheable))

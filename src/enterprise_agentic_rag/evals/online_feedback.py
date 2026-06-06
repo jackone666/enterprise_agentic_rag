@@ -14,7 +14,7 @@ Failed cases are written to data/eval/failed_cases.jsonl (Data Flywheel).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from enterprise_agentic_rag.evals.dataset import EvalDataset, FailedCase
@@ -29,7 +29,7 @@ class FeedbackRecord:
     thumbs_up: bool = True
     feedback_text: str = ""
     user_id: str = ""
-    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
 class FeedbackHandler:
@@ -165,6 +165,7 @@ class FeedbackHandler:
         """
         try:
             import asyncio
+
             from enterprise_agentic_rag.storage.repositories import Repository
 
             repo = Repository()

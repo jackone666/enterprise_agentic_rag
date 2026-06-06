@@ -1,6 +1,5 @@
 """Tests for code agent — code generation, template fallback, and symbol extraction."""
 
-import pytest
 
 from enterprise_agentic_rag.agents.code_agent import (
     _detect_language,

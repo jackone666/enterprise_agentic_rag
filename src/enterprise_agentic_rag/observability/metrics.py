@@ -14,7 +14,6 @@ from typing import Any
 
 from prometheus_client import Counter, Gauge, Histogram, generate_latest
 
-
 # ===================================================================
 # Prometheus metrics
 # ===================================================================

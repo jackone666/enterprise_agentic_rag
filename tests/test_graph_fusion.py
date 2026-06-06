@@ -10,8 +10,6 @@ Covers:
 
 from __future__ import annotations
 
-import pytest
-
 from enterprise_agentic_rag.rag.fusion import (
     normalize_weights_for_fallback,
     three_way_rrf_fusion,

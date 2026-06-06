@@ -44,9 +44,8 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import Any
-
-from dataclasses import dataclass, field
 
 from enterprise_agentic_rag.config.settings import get_settings
 from enterprise_agentic_rag.rag.graph.graph_schema import RetrievalPlan

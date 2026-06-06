@@ -8,9 +8,7 @@ Includes code block boost for developer-facing scenarios.
 
 from __future__ import annotations
 
-import math
 from typing import Any
-
 
 # ===========================================================================
 # Code block detection for retrieval boost

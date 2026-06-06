@@ -11,8 +11,8 @@ from enterprise_agentic_rag.rag.embedding_provider import (
     get_embedding_provider,
 )
 from enterprise_agentic_rag.rag.ingestion import IngestionPipeline, IngestionReport
-from enterprise_agentic_rag.rag.minio_store import MinIOStore
 from enterprise_agentic_rag.rag.milvus_store import MilvusStore
+from enterprise_agentic_rag.rag.minio_store import MinIOStore
 from enterprise_agentic_rag.rag.retriever import KeywordRetriever, Retriever
 
 

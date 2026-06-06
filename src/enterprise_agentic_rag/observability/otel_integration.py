@@ -67,12 +67,12 @@ def initialize() -> bool:
 
     try:
         from opentelemetry import trace
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.sdk.trace.export import BatchSpanProcessor
         from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        from opentelemetry.sdk.resources import Resource, SERVICE_NAME
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: F401
         from opentelemetry.instrumentation.httpx import HTTPXInstrumentor  # noqa: F401
+        from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+        from opentelemetry.sdk.trace import TracerProvider
+        from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
         resource = Resource(attributes={SERVICE_NAME: _OTEL_SERVICE_NAME})
 

@@ -18,7 +18,6 @@ from enterprise_agentic_rag.recovery.fallback_policy import (
 from enterprise_agentic_rag.recovery.recovery_manager import RecoveryManager
 from enterprise_agentic_rag.recovery.retry_policy import RetryConfig, RetryPolicy
 
-
 # =========================================================================
 # FallbackType & RecoveryAction enums
 # =========================================================================

@@ -118,7 +118,7 @@ async def call_tools(
         - ``tool_results``: Results of executed tools.
         - ``tool_calls``: Audit log entries (name + params).
         - ``tool_errors``: Error strings for failed tools.
-        - ``pending_tool_confirmations``: Sensitive tools that need approval.
+        - ``pending``: Sensitive tools that need approval (internal, not in AgentState).
     """
     selected = _select_tools(query, intent)
 
