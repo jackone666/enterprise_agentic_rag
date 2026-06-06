@@ -367,7 +367,7 @@ python scripts/run_eval_gate.py    # 运行 Eval Gate 评估门禁
 # Mock 模式（默认）
 LLM_PROVIDER=mock
 
-# OpenAI / vLLM / Ollama 等 OpenAI-compatible 接口
+# OpenAI / vLLM 等 OpenAI-compatible 接口
 LLM_PROVIDER=openai-compatible
 LLM_MODEL=gpt-4o-mini
 LLM_API_KEY=sk-xxxxxxxx
@@ -379,7 +379,28 @@ LLM_MODEL=qwen-turbo
 LLM_API_KEY=sk-xxxxxxxx
 ```
 
-**Fallback 保证：** 真实 LLM 调用失败时自动回退到 mock，主流程不崩溃。
+### Mock Tier 3 — 本地 Ollama 推理
+
+在没有 OpenAI key 但有本地 GPU/显存时，可用 Ollama 跑小模型推理：
+
+```bash
+# 拉取模型（如 qwen3 系列）
+ollama pull qwen3:1.7b
+
+# 启动 Ollama 服务（默认端口 11434）
+ollama serve
+
+# 配置 .env
+LLM_PROVIDER=ollama
+OLLAMA_MODEL=qwen3:1.7b
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_TIMEOUT_SECONDS=60
+OLLAMA_MAX_RETRIES=2
+```
+
+**特点：** 完全离线、零 API 成本，质量达真实 LLM 的 70-80%。适合内网/隐私敏感场景。
+
+**Fallback：** Ollama 连接失败或模型未拉取时抛出 `RuntimeError`，由上层 fallback 链处理。
 
 ## Cross-Encoder 重排序 🆕
 
@@ -786,6 +807,13 @@ enterprise_agentic_rag/
 │   │   ├── prompt_registry.py       # 🆕 Prompt 版本管理
 │   │   └── conflict_detector.py     # 🆕 冲突证据检测
 │   ├── llm/               # LLM Provider 抽象层
+│   │   ├── base.py
+│   │   ├── openai_provider.py
+│   │   ├── dashscope_provider.py
+│   │   ├── ollama_provider.py    # 🆕 本地 Ollama 推理（Mock Tier 3）
+│   │   ├── mock_provider.py
+│   │   ├── provider_factory.py
+│   │   └── __init__.py
 │   ├── tools/             # 工具系统 + 安全策略
 │   ├── storage/           # 数据持久化层
 │   ├── middleware/        # 中间件（租户隔离/限流）

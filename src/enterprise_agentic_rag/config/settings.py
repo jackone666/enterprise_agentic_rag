@@ -139,6 +139,24 @@ class DockerSettings:
 
 
 @dataclass
+class OllamaSettings:
+    """Ollama LLM provider settings."""
+
+    base_url: str = field(
+        default_factory=lambda: _env("OLLAMA_BASE_URL", "http://localhost:11434")
+    )
+    model: str = field(
+        default_factory=lambda: _env("OLLAMA_MODEL", "qwen3:1.7b")
+    )
+    timeout_seconds: float = field(
+        default_factory=lambda: float(_env("OLLAMA_TIMEOUT_SECONDS", "60"))
+    )
+    max_retries: int = field(
+        default_factory=lambda: int(_env("OLLAMA_MAX_RETRIES", "2"))
+    )
+
+
+@dataclass
 class AppSettings:
     log_level: str = field(default_factory=lambda: _env("LOG_LEVEL", "INFO"))
     max_retries: int = field(default_factory=lambda: int(_env("MAX_RETRIES", "3")))
@@ -146,6 +164,7 @@ class AppSettings:
     request_timeout_seconds: float = field(default_factory=lambda: float(_env("REQUEST_TIMEOUT_SECONDS", "60")))
     max_graph_steps: int = field(default_factory=lambda: int(_env("MAX_GRAPH_STEPS", "18")))
     max_llm_calls_per_request: int = field(default_factory=lambda: int(_env("MAX_LLM_CALLS_PER_REQUEST", "6")))
+    ollama: OllamaSettings = field(default_factory=OllamaSettings)
 
 
 @dataclass
@@ -406,6 +425,9 @@ _SETTINGS_ENV_KEYS = (
     "RERANKER_ENABLED",
     "RERANKER_MODEL",
     "OLLAMA_BASE_URL",
+    "OLLAMA_MODEL",
+    "OLLAMA_TIMEOUT_SECONDS",
+    "OLLAMA_MAX_RETRIES",
     "RERANKER_TIMEOUT",
     "RERANKER_BATCH_SIZE",
     "SEMANTIC_CACHE_ENABLED",
