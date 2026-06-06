@@ -8,31 +8,33 @@
 
 > 下面 10 条是面试/读代码最常被问错的认知陷阱，完整版见 `technical_deep_dive/` 各文档"易误会点"段。
 
-### 认知 1：5 个 Agent ≠ 5 个 RetrievalMode
+### 认知 1：6 个 Agent ≠ 3 个 RetrievalMode
 
 | 维度 | 数量 | 含义 |
 |------|------|------|
-| Agent | **5** | 1 Master + 4 Workers（master/tool/knowledge/code/verifier）|
-| RetrievalMode | **5** | hybrid_only / parallel / graph_first / error_first / code_first |
-| IntentCategory | **10** | 10 种用户意图分类 |
+| Agent | **6** | 1 Master + 5 Workers（master/tool/knowledge/code/verifier/retrieval）|
+| RetrievalMode | **3** | hybrid_only / parallel / graph_first |
+| IntentCategory | **6** | 6 种用户意图分类（v3.2 简化：合并/删除了4类）|
+
+v3.2 简化：移除 `error_first` / `code_first`模式（合并入 `parallel`），移除 `BEST_PRACTICE` / `LEARNING_GUIDANCE` / `ARCHITECTURE` / `project_debug` 意图。
 
 三者**正交**，不是 1-to-1-to-1。详见 `technical_deep_dive/主题/02-Agent设计.md` §四.5。
 
-### 认知 2：5 个 RetrievalMode 全部走 RAG
+### 认知 2：3 个 RetrievalMode 全部走 RAG
 
 模式只是"召回策略"（权重 + 是否走图谱），**不是"哪个 Agent 处理"**。`ToolAgent` 由 `MasterAgent._requires_tools()` 独立判断。
 
-### 认知 3：AgentState 字段数 = 72
+### 认知 3：AgentState 字段数 = 30
 
-不是 ~67/~70 等约数，是 **72 个 TypedDict 字段**。详见 `technical_deep_dive/01-项目总览与系统架构.md` §1.1。
+不是67/70 等约数，是 **~30 个 TypedDict 字段**（v3.2 删除了装饰性字段）。详见 `technical_deep_dive/01-项目总览与系统架构.md` §1.1。
 
 ### 认知 4：max_graph_steps = 18（上限，不是实际步数）
 
 典型请求 5-8 步完成，> 18 步才触发 `human_fallback`。
 
-### 认知 5：5 级降级链（不是动态决策）
+### 认知 5：3 级降级链（不是动态决策）
 
-每级降级路径**预先定义**：Milvus 挂 → ES 关键词 → GraphRAG → human_fallback；Rerank 挂 → RRF 截断；LLM 挂 → fallback provider → mock。
+每级降级路径**预先定义**：语义缓存命中 → BaseRAGWorkflow → 失败返回空证据；Rerank 挂 → RRF 截断；LLM 挂 → fallback provider → mock。
 
 ### 认知 6：6 个 BaseTool 全部在 ToolAgent 单例里
 
@@ -66,19 +68,20 @@ Eval Gate 是**门禁级**（关键 case），**全量评估**在 nightly/weekly
 - **v3.1**：`retrieval/` 包**整体并入 `rag/`** —— `keyword_search_tool.py` / `vector_search_tool.py` / `graph_search_tool.py` / `merger.py` / `reranker_wrapper.py` / `evidence_selector.py` / `unified_schemas.py` 全部移到 `rag/`，`retrieval/` 目录已删除
 - **v3.1**：`graph/workflow.py` 从 **1080 行**拆为 `graph/workflow.py`（~30 行 re-export 入口）+ `graph/builder.py`（图结构）+ `graph/nodes/`（16 个节点按职责拆分：`memory.py` / `permission.py` / `intent.py` / `master.py` / `retrieval.py` / `tools.py` / `context.py` / `generation.py` / `code.py` / `verify.py` / `finalize.py`）+ `graph/cache.py` + `graph/persistence.py` + `graph/dependencies.py`
 - **v3.1**：`MasterAgent` / `MasterDecision` / `AgentState` 新增 `routing_path` 字段（`"llm"` / `"rule"` / `"rule_direct"`），可观测 LLM 路由器实际跑了多少次
-- `last_worker` 字段值：`context_manager` / `knowledge_agent` / `code_agent`（不是 `answer_agent`）
+- **v3.2**：4 workflow 类合并为 `BaseRAGWorkflow`；`CodeAgent` 拆分为 `code_prompts`（prompt utility）+ `CodeExecutor`（agent）；`RetrievalAgent` 新增为独立 Agent；`graph/nodes/retrieval.py`精简为 ~15 行委托函数；`IntentCategory` 10→6；`RetrievalMode` 5→3；`AgentState` 72→~30；eval cases 22→8
+- `last_worker` 字段值：`retrieval_agent` / `knowledge_agent` / `code_executor`（v3.2 新增 retrieval_agent）
 
 ---
 
-## 🔑 5 个项目核心数字
+## 🔑 5 个项目核心数字（v3.2 更新）
 
 | 数字 | 含义 |
 |------|------|
-| **5** | Agent 数 / RetrievalMode 数 |
-| **10** | IntentCategory 数 |
-| **16** | LangGraph Node 数 |
-| **72** | AgentState 字段数 |
-| **22** | Agent 决策评估用例数 |
+| **6** | Agent 数（1 Master + 5 Workers，新增 RetrievalAgent）|
+| **3** | RetrievalMode 数（v3.2 简化：hybrid_only / parallel / graph_first）|
+| **6** | IntentCategory 数（v3.2 简化：10 → 6）|
+| **30** | AgentState 字段数（v3.2 简化：72 → ~30）|
+| **8** | Agent 决策评估用例数（v3.2 简化：22 → 8）|
 
 ---
 
@@ -115,24 +118,24 @@ Enterprise Agentic RAG Multi-Agent QA System
 ## 核心能力
 
 ### Agent 体系
-- **主从 Agent 架构** — MasterAgent(路由) + ToolAgent(工具) + Answer/Knowledge 生成能力 + CodeAgent 能力 + VerifierAgent(校验)
-- **Deep Intent 深度意图识别** — 10 种意图分类 + 5 种检索模式 + 多级置信度
-- **Claim-level 校验** 🆕 — 断言级幻觉检测，6 种断言类型逐条对照源文档
+- **主从 Agent 架构** — MasterAgent(路由) + ToolAgent(工具) + KnowledgeAgent(生成) + CodeExecutor(执行) + VerifierAgent(校验) + RetrievalAgent(检索)
+- **Deep Intent 深度意图识别** — 6 种意图分类 + 3 种检索模式 + 多级置信度（v3.2 简化）
+- **Claim-level 校验** — 断言级幻觉检测，逐条对照源文档
 - **MasterAgent 路由** — LLM 优先 + 规则兜底，支持 10 个下游节点分发
 
 ### 检索体系
 - **Adaptive RAG** — 向量 + 关键词 + 图谱 + 外部知识源四路融合
-- **意图感知检索工作流** 🆕 — HybridRAG / GraphFirst / ErrorFirst / CodeGeneration 四种模式自动分派
-- **Cross-Encoder 精排** 🆕 — Ollama qwen3-reranker-0.6b 替换规则重排序
+- **意图感知检索工作流** — BaseRAGWorkflow + 3 种模式（hybrid_only / graph_first / parallel）自动分派
+- **Cross-Encoder 精排** — Ollama qwen3-reranker-0.6b 替换规则重排序
 - **外部知识源补充** — GitHub Issues / Stack Overflow / Web Search 多源检索
-- **语义缓存** 🆕 — 双层缓存(精确匹配+Embedding相似度)，热门问题零延迟
+- **语义缓存** — 双层缓存(精确匹配+Embedding相似度)，热门问题零延迟
 
 ### 质量保障
 - **冲突证据检测** 🆕 — 多文档版本/否定/API废弃/建议冲突自动标注
 - **Self-RAG 质量门控** — 文档评分 → 幻觉检测 → 答案校验
-- **Eval Gate CI** 🆕 — 每次变更自动跑评估集，防止回归上线
+- **Eval Gate CI** — 每次变更自动跑评估集，防止回归上线
 - **Prompt Registry** 🆕 — 版本管理 + A/B 灰度 + 一键回滚
-- **Agent 决策评估集** 🆕 — 22 条用例评估 MasterAgent 路由准确性
+- **Agent 决策评估集** — 8 条用例评估 MasterAgent 路由准确性（v3.2 精简）
 
 ### 工程能力
 - **流式输出 SSE** 🆕 — `/chat/stream` 端点实时推送工作流节点事件
@@ -153,7 +156,7 @@ Enterprise Agentic RAG Multi-Agent QA System
 
 ### 架构模式：Master-Slave + Blackboard（主从 + 黑板）
 
-系统采用 **Hub-and-Spoke 星型拓扑**。核心原则：**Agent 之间不直接通信**，所有交互通过共享 `AgentState`（72 字段黑板）和 `MasterAgent` 中央路由完成。
+系统采用 **Hub-and-Spoke 星型拓扑**。核心原则：**Agent 之间不直接通信**，所有交互通过共享 `AgentState`（~30 字段黑板）和 `MasterAgent` 中央路由完成。
 
 ```
                     ┌──────────────────┐
@@ -210,8 +213,9 @@ class MasterAgent:
 |-------|---------|---------------------|
 | **ToolAgent** | 工单查询、系统状态、用户信息、错误码查询 | `tool_results`, `tool_errors` |
 | **Knowledge** | 向量+关键词+图谱融合检索、语义缓存、Cross-Encoder 精排、上下文构建、答案生成 | `retrieved_docs`, `draft_answer`, `citations` |
-| **CodeAgent** | AST 符号提取、LLM 代码生成、六层安全沙箱执行 | `code_snippet`, `code_verified` |
+| **CodeExecutor** | AST 符号提取、LLM 代码生成、六层安全沙箱执行 | `code_snippet`, `code_verified` |
 | **VerifierAgent** | Claim-level 断言拆分、逐条对照源文档、幻觉检测 | `verified`, `verification_reason` |
+| **RetrievalAgent** | 3-tier fallback（cache→workflow→fail）、BaseRAGWorkflow 模式分发、事件记录 | `retrieval_path`, `retrieved_docs`, `retrieval_errors` |
 
 **为什么拆分而不是合并：** 一个 Agent 管所有事 → 知识问答时误调工单、错误诊断时走错检索路径。职责分离让 Prompt 更短、工具集更聚焦、决策边界更清晰。
 
@@ -262,39 +266,33 @@ POST /chat
 
 | 用户问题类型 | Deep Intent | 执行路径 | 检索策略 | 校验方式 |
 |--------------|-------------|----------|----------|----------|
-| "解释一下 ArkUI 生命周期" | `concept_qa` | 检索服务 → AnswerAgent → VerifierAgent | HybridRAG，vector-heavy | Claim-level |
-| "给我一个调用 X API 的代码示例" | `code_generation` | 检索服务 → CodeAgent → 沙箱执行 → AnswerAgent | CodeGeneration 工作流，优先示例+API | 代码沙箱执行 |
-| "这个错误码怎么排查？" | `error_diagnosis` | ToolAgent 查状态/工单 → 检索服务 → AnswerAgent | ErrorFirst 工作流，优先错误库+FAQ | Claim-level |
-| "模块 A 到 B 怎么迁移？" | `migration` | 检索服务 → AnswerAgent → VerifierAgent | GraphFirst 工作流，优先图谱+迁移路径 | 冲突检测 |
-| "查一下我的工单状态" | `project_debug` | ToolAgent → 检索服务 → AnswerAgent | 工具结果为主 + 知识库解释 | 规则兜底 |
+| "解释一下 ArkUI 生命周期" | `concept_qa` | RetrievalAgent → KnowledgeAgent → VerifierAgent | BaseRAGWorkflow(hybrid_only)，vector-heavy | Claim-level |
+| "给我一个调用 X API 的代码示例" | `code_generation` | RetrievalAgent → CodeExecutor → 沙箱执行 → KnowledgeAgent | BaseRAGWorkflow(parallel)，优先示例+API | 代码沙箱执行 |
+| "这个错误码怎么排查？" | `error_diagnosis` | ToolAgent 查状态/工单 → RetrievalAgent → KnowledgeAgent | BaseRAGWorkflow(hybrid_only)，优先错误库+FAQ | Claim-level |
+| "模块 A 到 B 怎么迁移？" | `migration` | RetrievalAgent → KnowledgeAgent → VerifierAgent | BaseRAGWorkflow(graph_first)，优先图谱+迁移路径 | 冲突检测 |
+| "查一下我的工单状态" | `api_usage` | ToolAgent → RetrievalAgent → KnowledgeAgent | 工具结果为主 + 知识库解释 | 规则兜底 |
 
 知识库在当前架构中的定位是**证据来源**，不是独立 Agent。它会影响回答内容、引用和校验结果；真正决定"下一步去哪"的是 `MasterAgent`。
 
 ## 检索架构升级
 
-### 意图感知工作流分派
+### 意图感知工作流分派（v3.2 简化）
 
 ```
-retrieve_knowledge 节点
+retrieve_knowledge 节点（通过 RetrievalAgent 抽象）
   │
-  ├── 语义缓存命中 → 直接返回 (P95 ~10ms)
+  ├── Tier 0: 语义缓存命中 → 直接返回 (P95 ~10ms)
   │
-  ├── hybrid_only / parallel → HybridRAGWorkflow
-  │     └── 关键词(kw) + 向量(vec) 并行 → RRF 融合 → 重排 → 证据选择
+  ├── Tier 1: BaseRAGWorkflow(mode=...)
+  │     ├── hybrid_only  → kw + vec 并行 → RRF 融合 → 重排 → 证据选择
+  │     ├── graph_first  → 图谱 → 查询扩展 → kw + vec → 三路融合 → 重排
+  │     └── parallel → 示例 → API参考 → 官方文档 → kw + vec 补充
   │
-  ├── graph_first → GraphFirstWorkflow
-  │     └── 图谱 → 查询扩展 → kw + vec 并行 → 三路融合 → 重排
-  │
-  ├── error_first → ErrorFirstWorkflow
-  │     └── 错误库 → FAQ/工单 → kw → 融合 → 重排
-  │
-  ├── code_first → CodeGenerationWorkflow
-  │     └── 示例 → API参考 → 官方文档 → 融合 → 重排
-  │
-  ├── 回退层1: GraphRAG Orchestrator
-  ├── 回退层2: 旧版 Retriever (kw fallback)
-  └── 外部增强: GitHub Issues + Stack Overflow + Web Search
+  └── Tier 2: 无可用证据 → 返回空 + fallback_reason
+      （由 MasterAgent 决定后续：rewrite_query / human_fallback）
 ```
+
+v3.2 简化：4 个独立 Workflow 类合并为 **1 个 `BaseRAGWorkflow`**，通过 `mode` 参数区分。RAG 层现在由 `RetrievalAgent` 代理，但内部仍是确定性检索逻辑。
 
 ### 重排序链
 
@@ -728,13 +726,14 @@ enterprise_agentic_rag/
 │   ├── app/               # FastAPI 应用（/chat, /chat/stream, /feedback）
 │   ├── agent/             # Deep Intent 深度意图识别
 │   │   └── deep_intent/   # 10意图分类 + 5检索模式 + 置信度
-│   ├── agents/            # 主从 Agent 与生成/校验能力模块
+│   ├── agents/            # 主从 Agent 与生成/校验/检索能力模块（v3.2 新增 RetrievalAgent）
 │   │   ├── master_agent.py      # 中央路由调度
 │   │   ├── knowledge_agent.py   # 知识问答生成
-│   │   ├── code_agent.py        # 代码生成 + AST
+│   │   ├── code_executor.py     # 🆕 代码执行（v3.1 从 CodeAgent 拆分）
 │   │   ├── tool_agent.py        # 工具编排执行
 │   │   ├── verifier_agent.py    # 答案校验（含Claim-level）
-│   │   └── claim_verifier.py    # 🆕 断言级幻觉检测
+│   │   ├── retrieval_agent.py   # 🆕 v3.2 检索代理（3-tier fallback）
+│   │   └── claim_verifier.py    # 断言级幻觉检测
 │   ├── rag/               # 检索引擎
 │   │   ├── cross_encoder_reranker.py  # 🆕 Ollama qwen3-reranker
 │   │   ├── semantic_cache.py          # 🆕 语义缓存
@@ -751,13 +750,10 @@ enterprise_agentic_rag/
 │   │   ├── reranker_wrapper.py        # Cross-Encoder 优先（v3.1 合并）
 │   │   ├── evidence_selector.py       # 证据选择（v3.1 合并）
 │   │   └── unified_schemas.py         # 🆕 v3.1 工具 I/O 契约
-│   ├── workflows/         # 意图感知检索工作流（v3.1 仍在，调用 rag/ 内的工具）
-│   │   ├── hybrid_rag_workflow.py
-│   │   ├── graph_first_workflow.py
-│   │   ├── error_first_workflow.py
-│   │   └── code_generation_workflow.py
+│   ├── workflows/         # 意图感知检索工作流（v3.2 合并为 1 个类）
+│   │   └── base_rag_workflow.py # 🆕 v3.2 BaseRAGWorkflow（mode 参数区分模式）
 │   ├── graph/             # LangGraph 工作流（v3.1 拆分）
-│   │   ├── state.py                 # AgentState（72 字段 + v3.1 新增 routing_path）
+│   │   ├── state.py                 # AgentState（~30 字段，v3.2 精简 + routing_path）
 │   │   ├── workflow.py              # ~30 行 re-export 入口
 │   │   ├── builder.py               # 🆕 v3.1 图结构（节点 + 边）
 │   │   ├── dependencies.py          # 🆕 v3.1 共享单例
